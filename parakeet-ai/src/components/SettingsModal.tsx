@@ -19,7 +19,6 @@ export default function SettingsModal({ apiKey, systemPrompt, autoSpeak, onClose
     <div className="fixed inset-0 z-50 flex items-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full bg-[#111116] border-t border-white/10 rounded-t-3xl px-6 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-6 space-y-5">
-        {/* Handle */}
         <div className="absolute top-3 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/20" />
 
         <div className="flex items-center justify-between">
@@ -31,21 +30,39 @@ export default function SettingsModal({ apiKey, systemPrompt, autoSpeak, onClose
           </button>
         </div>
 
+        {/* Free API Key notice */}
+        <div className="glass rounded-2xl p-3 flex gap-3 items-start">
+          <span className="text-green-400 text-lg">✓</span>
+          <div>
+            <p className="text-sm font-semibold text-green-400">100% Free — No credit card</p>
+            <p className="text-xs text-white/50 mt-0.5">
+              Get a free Google AI key at{' '}
+              <span className="text-indigo-400">aistudio.google.com/app/apikey</span>
+            </p>
+          </div>
+        </div>
+
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">Anthropic API Key</label>
+          <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+            Google AI API Key (Free)
+          </label>
           <input
             type="password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder="sk-ant-..."
+            placeholder="AIza..."
             style={{ fontSize: '16px' }}
-            className="w-full glass rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-indigo-500/50"
+            className="w-full glass rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 outline-none"
           />
-          <p className="text-xs text-white/30">Only needed if not set as server env var. Get yours at console.anthropic.com</p>
+          <p className="text-xs text-white/30">
+            Stored only on this device. Never sent anywhere except Google AI.
+          </p>
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">Custom Personality</label>
+          <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+            Custom Personality
+          </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -63,15 +80,9 @@ export default function SettingsModal({ apiKey, systemPrompt, autoSpeak, onClose
           </div>
           <button
             onClick={() => setSpeak(!speak)}
-            className={`w-12 h-7 rounded-full transition-colors duration-200 flex items-center px-1 ${
-              speak ? 'bg-indigo-500' : 'bg-white/20'
-            }`}
+            className={`w-12 h-7 rounded-full transition-colors duration-200 flex items-center px-1 ${speak ? 'bg-indigo-500' : 'bg-white/20'}`}
           >
-            <div
-              className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
-                speak ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
+            <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${speak ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
         </div>
 

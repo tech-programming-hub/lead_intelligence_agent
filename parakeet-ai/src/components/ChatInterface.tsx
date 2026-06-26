@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import MessageBubble, { Message } from './MessageBubble';
 import VoiceButton from './VoiceButton';
 import SettingsModal from './SettingsModal';
@@ -14,7 +14,7 @@ If asked who you are, say you're Parakeet, a personal AI assistant.`;
 const QUICK_PROMPTS = [
   'What can you do?',
   'Tell me a joke 😄',
-  'Explain something complex simply',
+  'Explain something simply',
   'Help me brainstorm',
 ];
 
@@ -42,9 +42,7 @@ export default function ChatInterface() {
     setApiKey(savedKey);
     setSystemPrompt(savedPrompt);
     setAutoSpeak(savedSpeak);
-    if (!savedKey) {
-      setTimeout(() => setShowSettings(true), 600);
-    }
+    if (!savedKey) setTimeout(() => setShowSettings(true), 600);
   }, []);
 
   useEffect(() => {
@@ -79,7 +77,7 @@ export default function ChatInterface() {
       setError('');
 
       if (!apiKey) {
-        setError('Add your Anthropic API key in Settings to start chatting.');
+        setError('Add your free Google AI API key in Settings to start chatting.');
         setShowSettings(true);
         return;
       }
@@ -98,45 +96,53 @@ export default function ChatInterface() {
         timestamp: new Date(),
       };
 
+      // capture current messages BEFORE state update (for history)
+      const prevMessages = messages;
+
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setInput('');
       setTranscript('');
       setIsLoading(true);
 
       try {
-        const client = new Anthropic({ apiKey: apiKey.trim(), dangerouslyAllowBrowser: true });
-        const history = [...messages, userMsg].map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }));
-
-        const stream = client.messages.stream({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1024,
-          system: systemPrompt?.trim() || DEFAULT_SYSTEM,
-          messages: history,
+        const genAI = new GoogleGenerativeAI(apiKey.trim());
+        const model = genAI.getGenerativeModel({
+          model: 'gemini-1.5-flash',
+          systemInstruction: systemPrompt?.trim() || DEFAULT_SYSTEM,
         });
 
+        // Build conversation history (all previous messages)
+        const history = prevMessages.map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        }));
+
+        const chat = model.startChat({
+          history,
+          generationConfig: { maxOutputTokens: 1024 },
+        });
+
+        const result = await chat.sendMessageStream(trimmed);
+
         let fullText = '';
-        for await (const chunk of stream) {
-          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-            fullText += chunk.delta.text;
-            setMessages((prev) =>
-              prev.map((m) => (m.id === assistantId ? { ...m, content: fullText } : m))
-            );
-          }
+        for await (const chunk of result.stream) {
+          const chunkText = chunk.text();
+          fullText += chunkText;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, content: fullText } : m))
+          );
         }
 
         if (fullText) speakText(fullText);
       } catch (err: any) {
         const msg =
-          err?.status === 401
+          err?.message?.includes('API_KEY') || err?.message?.includes('API key')
             ? 'Invalid API key. Please check your key in Settings.'
             : err?.message || 'Something went wrong. Please try again.';
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantId ? { ...m, content: `⚠️ ${msg}` } : m))
         );
-        if (err?.status === 401) setError(msg);
+        if (msg.includes('key')) setError(msg);
       } finally {
         setIsLoading(false);
       }
@@ -157,7 +163,6 @@ export default function ChatInterface() {
     recognition.lang = 'en-US';
 
     recognition.onstart = () => setIsRecording(true);
-
     recognition.onresult = (event: any) => {
       let interim = '';
       let final = '';
@@ -174,12 +179,7 @@ export default function ChatInterface() {
         setTranscript(interim);
       }
     };
-
-    recognition.onerror = () => {
-      setIsRecording(false);
-      setTranscript('');
-    };
-
+    recognition.onerror = () => { setIsRecording(false); setTranscript(''); };
     recognition.onend = () => setIsRecording(false);
 
     recognitionRef.current = recognition;
@@ -254,10 +254,7 @@ export default function ChatInterface() {
             {error && (
               <div className="glass rounded-2xl p-4 text-sm text-orange-300 max-w-xs text-left">
                 ⚠️ {error}
-                <button
-                  onClick={() => setShowSettings(true)}
-                  className="block mt-2 text-indigo-400 underline"
-                >
+                <button onClick={() => setShowSettings(true)} className="block mt-2 text-indigo-400 underline">
                   Open Settings →
                 </button>
               </div>
@@ -282,14 +279,12 @@ export default function ChatInterface() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Transcript preview */}
       {transcript && (
         <div className="px-5 py-2 text-white/50 text-sm italic border-t border-white/[0.06] bg-black/50 flex-shrink-0">
           {transcript}
         </div>
       )}
 
-      {/* Speaking indicator */}
       {isSpeaking && (
         <div className="px-4 pb-1 flex-shrink-0">
           <button
@@ -298,11 +293,7 @@ export default function ChatInterface() {
           >
             <div className="flex gap-0.5 items-center">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div
-                  key={i}
-                  className="wave-bar w-1 bg-indigo-400 rounded-full"
-                  style={{ animationDelay: `${(i - 1) * 0.12}s` }}
-                />
+                <div key={i} className="wave-bar w-1 bg-indigo-400 rounded-full" style={{ animationDelay: `${(i - 1) * 0.12}s` }} />
               ))}
             </div>
             <span>Speaking… tap to stop</span>
@@ -315,13 +306,7 @@ export default function ChatInterface() {
         className="flex-shrink-0 px-4 pt-3 bg-black/70 backdrop-blur-xl border-t border-white/[0.06]"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
       >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            sendMessage(input);
-          }}
-          className="flex items-center gap-3"
-        >
+        <form onSubmit={(e) => { e.preventDefault(); sendMessage(input); }} className="flex items-center gap-3">
           <div className="flex-1 glass rounded-2xl flex items-center px-4 py-3 min-h-[48px]">
             <input
               ref={inputRef}
@@ -339,28 +324,14 @@ export default function ChatInterface() {
                 disabled={isLoading}
                 className="ml-2 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center active:opacity-80 transition-opacity flex-shrink-0"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13" />
                   <polygon points="22 2 15 22 11 13 2 9 22 2" />
                 </svg>
               </button>
             )}
           </div>
-          <VoiceButton
-            isRecording={isRecording}
-            isLoading={isLoading}
-            onStart={startRecording}
-            onStop={stopRecording}
-          />
+          <VoiceButton isRecording={isRecording} isLoading={isLoading} onStart={startRecording} onStop={stopRecording} />
         </form>
       </div>
 
