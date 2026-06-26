@@ -572,13 +572,21 @@ export default function ChatInterface() {
             )}
           </div>
 
-          {/* Interview mode bottom — just stop button */}
+          {/* Interview mode bottom — compact stop bar */}
           {isLiveListening && (
-            <div className="flex-shrink-0 border-t border-white/[0.06] bg-black/70 backdrop-blur-xl px-5"
-              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)', paddingTop: '16px' }}>
+            <div className="flex-shrink-0 border-t border-white/[0.06] bg-black/70 backdrop-blur-xl px-4 flex items-center gap-3"
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)', paddingTop: '10px' }}>
+              {/* Waveform */}
+              <div className="flex gap-0.5 items-center flex-shrink-0">
+                {[6, 10, 14, 10, 18, 10, 14, 10, 6].map((h, i) => (
+                  <div key={i} className="w-1 rounded-full bg-red-400"
+                    style={{ height: `${h}px`, animation: 'wave 0.9s ease-in-out infinite alternate', animationDelay: `${i * 0.09}s` }} />
+                ))}
+              </div>
+              <p className="flex-1 text-xs text-red-400 font-semibold">Listening to interviewer…</p>
               <button onClick={stopInterviewMode}
-                className="w-full py-4 rounded-2xl bg-white/[0.07] border border-white/[0.12] font-semibold text-white/60 active:bg-white/10 text-sm">
-                ■ Stop Listening
+                className="glass rounded-xl px-4 py-2.5 text-xs font-semibold text-white/60 active:bg-white/10 flex-shrink-0">
+                ■ Stop
               </button>
             </div>
           )}
@@ -677,64 +685,81 @@ export default function ChatInterface() {
             </div>
           )}
 
-          {/* Bottom controls */}
-          <div className="flex-shrink-0 flex flex-col items-center bg-black/70 backdrop-blur-xl border-t border-white/[0.06]"
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)', paddingTop: '14px' }}>
+          {/* ── Compact bottom bar ── */}
+          <div className="flex-shrink-0 bg-black/70 backdrop-blur-xl border-t border-white/[0.06]"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)', paddingTop: '10px' }}>
 
-            <div className="h-7 flex items-center justify-center mb-2">
-              {(isRecording || isSpeaking) ? (
-                <div className="flex gap-1 items-center">
-                  {[12, 20, 28, 20, 32, 20, 28, 20, 12].map((h, i) => (
-                    <div key={i} className={`w-1.5 rounded-full ${isRecording ? 'bg-red-400' : 'bg-indigo-400'}`}
-                      style={{ height: `${h}px`, animation: 'wave 0.9s ease-in-out infinite alternate', animationDelay: `${i * 0.09}s` }} />
-                  ))}
-                </div>
-              ) : <div className="h-7" />}
-            </div>
-
-            <p className="text-xs text-white/30 mb-3.5 font-medium tracking-wide text-center px-4">
-              {isRecording ? 'Listening… speak now' : isLoading ? 'Coach is thinking…' : isSpeaking ? 'Speaking — tap to stop' : pendingTranscript ? 'Tap ✓ to send or ✕ to cancel' : coachIsIdle ? 'Tap mic and ask your coach' : 'Tap mic for next question'}
-            </p>
-
-            <button
-              onClick={isRecording ? stopCoachRecording : isSpeaking ? () => { window.speechSynthesis?.cancel(); setIsSpeaking(false); } : pendingTranscript ? confirmPending : isLoading ? undefined : startCoachRecording}
-              disabled={isLoading}
-              className={`w-[76px] h-[76px] rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 active:scale-95 mb-3
-                ${isRecording ? 'bg-red-500 shadow-red-500/50 scale-110'
-                  : isSpeaking ? 'bg-indigo-500 shadow-indigo-500/40'
-                  : pendingTranscript ? 'bg-green-500 shadow-green-500/40'
-                  : isLoading ? 'bg-white/10'
-                  : 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-purple-500/40'}`}>
-              {isSpeaking ? (
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="white"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
-              ) : pendingTranscript ? (
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-              ) : isLoading ? (
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" className="animate-spin"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
-              ) : (
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
-                </svg>
-              )}
-            </button>
-
-            <button onClick={() => { setShowTextInput(v => !v); if (!showTextInput) setTimeout(() => textInputRef.current?.focus(), 100); }}
-              className="text-xs text-white/25 active:text-white/60 px-4 py-1 mb-1">
-              {showTextInput ? 'Hide keyboard' : 'Type instead'}
-            </button>
-
+            {/* Text input — only shown when toggled */}
             {showTextInput && (
-              <form onSubmit={e => { e.preventDefault(); if (textInput.trim()) { sendCoachMessage(textInput.trim()); setTextInput(''); } }}
-                className="flex gap-2 px-4 mt-1.5 w-full">
+              <form onSubmit={e => { e.preventDefault(); if (textInput.trim()) { sendCoachMessage(textInput.trim()); setTextInput(''); setShowTextInput(false); } }}
+                className="flex gap-2 px-4 mb-2">
                 <input ref={textInputRef} type="text" value={textInput} onChange={e => setTextInput(e.target.value)}
                   placeholder="Type your question…" disabled={isLoading} style={{ fontSize: '16px' }}
                   className="flex-1 glass rounded-xl px-4 py-2.5 text-white placeholder-white/25 outline-none text-sm" />
                 <button type="submit" disabled={isLoading || !textInput.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-500 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40">Send</button>
+                  className="px-4 rounded-xl bg-indigo-500 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40">Send</button>
               </form>
             )}
+
+            {/* Single horizontal row: [status/waveform] [mic] [keyboard] */}
+            <div className="flex items-center gap-3 px-4">
+
+              {/* Left: waveform when active, hint text when idle */}
+              <div className="flex-1 min-w-0">
+                {(isRecording || isSpeaking) ? (
+                  <div className="flex gap-0.5 items-center h-9">
+                    {[6, 10, 14, 10, 18, 10, 14, 10, 6].map((h, i) => (
+                      <div key={i} className={`w-1 rounded-full ${isRecording ? 'bg-red-400' : 'bg-indigo-400'}`}
+                        style={{ height: `${h}px`, animation: 'wave 0.9s ease-in-out infinite alternate', animationDelay: `${i * 0.09}s` }} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-white/30 leading-snug">
+                    {isLoading ? 'Coach is thinking…'
+                      : pendingTranscript ? 'Tap ✓ to send or ✕ to cancel'
+                      : coachIsIdle ? 'Tap mic to ask your coach'
+                      : 'Tap mic for next question'}
+                  </p>
+                )}
+              </div>
+
+              {/* Center: mic button — 52px, easy to tap but not dominating */}
+              <button
+                onClick={isRecording ? stopCoachRecording : isSpeaking ? () => { window.speechSynthesis?.cancel(); setIsSpeaking(false); } : pendingTranscript ? confirmPending : isLoading ? undefined : startCoachRecording}
+                disabled={isLoading}
+                className={`w-[52px] h-[52px] rounded-full flex items-center justify-center shadow-xl flex-shrink-0 transition-all duration-200 active:scale-90
+                  ${isRecording ? 'bg-red-500 shadow-red-500/50 scale-105'
+                    : isSpeaking ? 'bg-indigo-500 shadow-indigo-500/40'
+                    : pendingTranscript ? 'bg-green-500 shadow-green-500/40'
+                    : isLoading ? 'bg-white/10'
+                    : 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-purple-500/30'}`}>
+                {isSpeaking ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+                ) : pendingTranscript ? (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                ) : isLoading ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" className="animate-spin"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+                ) : (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Right: keyboard toggle button */}
+              <button
+                onClick={() => { setShowTextInput(v => !v); if (!showTextInput) setTimeout(() => textInputRef.current?.focus(), 100); }}
+                className={`w-[44px] h-[44px] rounded-full flex items-center justify-center flex-shrink-0 transition-colors
+                  ${showTextInput ? 'bg-indigo-500/30 text-indigo-300' : 'glass text-white/40 active:text-white/80'}`}
+                aria-label="Toggle keyboard">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="6" width="20" height="13" rx="2" />
+                  <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8M6 10v.01" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       )}
