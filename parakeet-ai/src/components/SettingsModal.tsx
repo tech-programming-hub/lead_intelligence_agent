@@ -36,21 +36,21 @@ export default function SettingsModal({ apiKey, systemPrompt, autoSpeak, onClose
           <div>
             <p className="text-sm font-semibold text-green-400">100% Free — No credit card</p>
             <p className="text-xs text-white/50 mt-0.5">
-              Get a free Google AI key at{' '}
-              <span className="text-indigo-400">aistudio.google.com/app/apikey</span>
+              Get a free Groq key at{' '}
+              <span className="text-indigo-400">console.groq.com/keys</span>
             </p>
           </div>
         </div>
 
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">
-            Google AI API Key (Free)
+            Groq API Key (Free)
           </label>
           <input
             type="password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder="AIza..."
+            placeholder="gsk_..."
             style={{ fontSize: '16px' }}
             className="w-full glass rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 outline-none"
           />

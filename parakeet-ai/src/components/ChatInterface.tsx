@@ -82,37 +82,35 @@ const QUICK_PROMPTS = [
   '💰 Salary negotiation strategy',
 ];
 
-async function callGemini(
+async function callGroq(
   apiKey: string,
   messages: Message[],
   currentMessage: string,
   systemPrompt: string,
   onChunk: (text: string) => void
 ): Promise<string> {
-  const contents = [
-    ...messages
-      .filter((m) => m.content && !m.content.startsWith('⚠️'))
-      .map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      })),
-    { role: 'user', parts: [{ text: currentMessage }] },
-  ];
-
   const body = {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents,
-    generationConfig: { maxOutputTokens: 2048, temperature: 0.9 },
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages
+        .filter((m) => m.content && !m.content.startsWith('⚠️'))
+        .map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: currentMessage },
+    ],
+    max_tokens: 2048,
+    temperature: 0.9,
+    stream: true,
   };
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:streamGenerateContent?alt=sse&key=${apiKey.trim()}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }
-  );
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey.trim()}`,
+    },
+    body: JSON.stringify(body),
+  });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -138,13 +136,13 @@ async function callGemini(
       if (!data || data === '[DONE]') continue;
       try {
         const json = JSON.parse(data);
-        const text: string = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        const text: string = json?.choices?.[0]?.delta?.content ?? '';
         if (text) {
           fullText += text;
           onChunk(fullText);
         }
       } catch {
-        // partial JSON — skip
+        // partial chunk — skip
       }
     }
   }
@@ -208,7 +206,7 @@ export default function ChatInterface() {
       setError('');
 
       if (!apiKey) {
-        setError('Add your free Google AI API key in Settings.');
+        setError('Add your free Groq API key in Settings (console.groq.com).');
         setShowSettings(true);
         return;
       }
@@ -224,7 +222,7 @@ export default function ChatInterface() {
       setIsLoading(true);
 
       try {
-        const fullText = await callGemini(
+        const fullText = await callGroq(
           apiKey,
           prevMessages,
           trimmed,
