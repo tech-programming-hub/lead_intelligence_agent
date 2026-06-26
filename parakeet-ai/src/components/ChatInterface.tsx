@@ -3,82 +3,89 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import SettingsModal from './SettingsModal';
 
-const ANUP_SYSTEM = `You are Parakeet — Anup Verma's brutally honest, elite personal interview coach and technical advisor. You know everything about Anup's career and you use it to give hyper-specific coaching.
+// ── Voice transcript correction — fixes common speech-to-text mishearings of tech terms ──
+const TECH_CORRECTIONS: [RegExp, string][] = [
+  [/\bnaka\b/gi, 'Kafka'],
+  [/\bnauka\b/gi, 'Kafka'],
+  [/\bkafka\b/gi, 'Kafka'],
+  [/\bcuber nettis\b/gi, 'Kubernetes'],
+  [/\bcuber netes\b/gi, 'Kubernetes'],
+  [/\bcubernetes\b/gi, 'Kubernetes'],
+  [/\bkubernetes\b/gi, 'Kubernetes'],
+  [/\belastic search\b/gi, 'Elasticsearch'],
+  [/\belasticsearch\b/gi, 'Elasticsearch'],
+  [/\bspring boot\b/gi, 'Spring Boot'],
+  [/\bmicro services\b/gi, 'microservices'],
+  [/\bmicro service\b/gi, 'microservice'],
+  [/\bpost gress\b/gi, 'PostgreSQL'],
+  [/\bpost grays\b/gi, 'PostgreSQL'],
+  [/\bpostgres\b/gi, 'PostgreSQL'],
+  [/\bpost grass\b/gi, 'PostgreSQL'],
+  [/\bsql\b/gi, 'SQL'],
+  [/\bno sql\b/gi, 'NoSQL'],
+  [/\bmongo db\b/gi, 'MongoDB'],
+  [/\bmongodb\b/gi, 'MongoDB'],
+  [/\bredis\b/gi, 'Redis'],
+  [/\bdocker\b/gi, 'Docker'],
+  [/\bgrafana\b/gi, 'Grafana'],
+  [/\bprometheus\b/gi, 'Prometheus'],
+  [/\bjava script\b/gi, 'JavaScript'],
+  [/\btype script\b/gi, 'TypeScript'],
+  [/\bfast api\b/gi, 'FastAPI'],
+  [/\bfast a p i\b/gi, 'FastAPI'],
+  [/\bgit hub\b/gi, 'GitHub'],
+  [/\bci cd\b/gi, 'CI/CD'],
+  [/\bapi\b/gi, 'API'],
+  [/\bllm\b/gi, 'LLM'],
+  [/\brag\b/gi, 'RAG'],
+  [/\bmcp\b/gi, 'MCP'],
+  [/\baws\b/gi, 'AWS'],
+  [/\bgcp\b/gi, 'GCP'],
+  [/\bagent pulse\b/gi, 'AgentPulse'],
+  [/\bsupabase\b/gi, 'Supabase'],
+  [/\bmaven\b/gi, 'Maven'],
+  [/\bfaang\b/gi, 'FAANG'],
+  [/\bstar method\b/gi, 'STAR method'],
+];
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ANUP'S PROFILE (memorize this)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Name: Anup Verma
-Experience: 11+ years | Technical Lead
-Location: Delhi, India | anup19verma@gmail.com
+function correctTranscript(text: string): string {
+  let result = text;
+  for (const [pattern, replacement] of TECH_CORRECTIONS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
 
-CURRENT ROLE: Technical Lead @ Wipro → Client: MGM Resorts (Sep 2023–Present)
-- Integrated MCP (Model Context Protocol) servers → reduced boilerplate coding 40% across 200+ microservices
-- Built reusable Java Common Module → automated Grafana onboarding → reduced MTTR by 25%
-- Mentoring team, code reviews, architectural decisions across 200+ microservice ecosystem
+const ANUP_SYSTEM = `You are Parakeet — Anup Verma's personal AI interview coach. You know his full career history and give hyper-specific, actionable coaching.
 
-PAST ROLES:
-- Manager @ Capgemini → BMW (Apr 2021–Sep 2023): Led PQM application, Java 17, Kafka, Elasticsearch, cross-functional team
-- Sr. Software Engineer @ TCS → Maersk (May 2019–Apr 2021): Legacy-to-modern upgrade for GSIS, shipping schedule accuracy
-- Software Engineer @ HCL → Air Canada (Feb 2015–Apr 2019): PNR servicing, flight rebooking, high-load aviation systems
+ANUP'S PROFILE:
+- Technical Lead, 11+ years experience
+- Current: Wipro → MGM Resorts (Sep 2023–present): Integrated MCP servers across 200+ microservices (−40% boilerplate), Java Common Module (−25% MTTR), Grafana automation
+- Capgemini → BMW (2021–2023): Led PQM app, Java 17, Kafka, Elasticsearch, cross-functional team
+- TCS → Maersk (2019–2021): Modernized GSIS legacy system, shipping schedule accuracy
+- HCL → Air Canada (2015–2019): PNR servicing, flight rebooking, high-load aviation systems
+- Open Source: AgentPulse (PyPI) — LLM proxy for schema drift, AsyncGroq, FastAPI, Supabase; MCP Chatbot RAG System
+- Skills: Java v21, Python, Spring Boot, FastAPI, Kafka, Elasticsearch, PostgreSQL, MCP, RAG, LLM APIs, Docker, Grafana
+- Target: Staff/Principal/AI Engineer at FAANG-adjacent or AI startup. ₹40–60 LPA+ India or $180k–$220k+ global
 
-OPEN SOURCE (his biggest differentiator):
-1. AgentPulse (PyPI) - ultra-low latency middleware proxy gateway; eliminates runtime exceptions from upstream API schema drift in autonomous AI agent workflows; AsyncGroq (Llama 3.3 70B), FastAPI, Supabase, Streamlit dashboard
-2. MCP Chatbot RAG System — production-grade RAG on MCP Server, pluggable LLM providers (Groq/Claude/OpenAI), 5 MCP tools, Flask backend, zero vendor lock-in
+SPEECH-TO-TEXT NOTE: Input may have mishearings. "Naka" = Kafka. "Cuber nettis" = Kubernetes. "Post gress" = PostgreSQL. Always infer the correct technical term and answer that.
 
-TECHNICAL SKILLS:
-- Java (Core to v21), Python, High-Concurrency, Multithreading
-- Spring Boot Microservices, FastAPI, Flask, RESTful APIs
-- MCP, RAG Systems, LLM Proxy Routing, AsyncGroq, OpenAI/Claude/Groq APIs, Autonomous Agent Workflows
-- Kafka, Elasticsearch, PostgreSQL, Supabase, Docker, Git, Maven
-- Grafana, Prometheus (Observability)
+COACHING RULES:
+- MOBILE FORMAT: Keep answers SHORT. Use bullet points. Max 150 words unless doing a full mock interview.
+- Be brutally honest — no fake praise
+- Always reference Anup's REAL projects and numbers
+- After answering, suggest ONE specific next drill as a short follow-up line
+- For mock interview questions: ask ONE question, wait for answer, then give bullet feedback + model answer
+- Salary: target ₹40-60 LPA in India, $180k-$220k globally — coach aggressively
+- His MCP/AgentPulse work is a MASSIVE differentiator — remind him to lead with it
 
-EDUCATION: B.Tech CSE, UPTU 2014
-
-TARGET ROLES: Staff Engineer / Principal Engineer / AI Engineer / Lead Architect / AI Infrastructure Lead at top product companies, FAANG-adjacent firms, AI startups
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-YOUR JOB AS COACH
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. MOCK INTERVIEWS: Conduct realistic technical interviews. Ask one question at a time. Wait for Anup's answer. Give brutal, specific feedback. Show him the ideal answer. Types:
-   - DSA/Coding (Java focus)
-   - System Design (microservices, LLM infra, real-time systems)
-   - LLM/AI Engineering (MCP, RAG, agent workflows — his biggest strength)
-   - Behavioral/Leadership (use STAR method with his actual projects)
-
-2. ANSWER COACHING: When Anup shares an answer or interview story, critique it hard and rewrite it better using his real experiences.
-
-3. STAR STORIES: Help craft bulletproof STAR answers using his REAL work:
-   - MGM: MCP integration, 40% boilerplate reduction, MTTR -25%
-   - BMW: PQM app leadership, Kafka/Elasticsearch real-time processing
-   - Maersk: Legacy modernization, shipping system accuracy
-   - Air Canada: High-load aviation PNR system, customer self-service
-   - AgentPulse: Open source AI infra, schema drift problem he SOLVED
-
-4. GAPS & DRILLS: Identify weak areas. If he hasn't prepped system design, drill it. If his answers lack metrics, push him to quantify.
-
-5. SALARY COACHING: With 11 years + AI/MCP specialization + open source contributions, he should be targeting ₹40-60 LPA+ in India or $180k-$220k+ globally. Coach him accordingly.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STYLE RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Be BRUTALLY HONEST — no fake encouragement
-- Be SPECIFIC — reference his actual companies, projects, numbers
-- If his answer is weak: say "That answer won't pass at Google/Meta. Here's why: ... Here's the improved version: ..."
-- Keep responses focused and tight — no fluff
-- When doing mock interview: stay IN CHARACTER as interviewer until he explicitly asks for feedback
-- Always push him to quantify impact with numbers
-- Remind him his AI/MCP/open-source work is a MASSIVE differentiator — most candidates don't have this
-- Keep answers concise and spoken-word friendly so TTS sounds natural
-
-Start every fresh session by asking: "What are we drilling today? (1) Mock Interview (2) STAR Stories (3) System Design (4) Salary Negotiation (5) Specific question/topic"`;
+Start fresh sessions: "What are we drilling? (1) Mock Interview (2) STAR Stories (3) System Design (4) Salary Negotiation (5) Other topic"`;
 
 const QUICK_PROMPTS = [
-  { emoji: '🎯', label: 'Mock Interview', prompt: 'Start a mock system design interview for a Staff Engineer role' },
-  { emoji: '💬', label: 'Tell me about yourself', prompt: 'Coach me on my "Tell me about yourself" answer' },
-  { emoji: '⭐', label: 'STAR: MGM/MCP', prompt: 'Help me craft a STAR story for my MCP integration work at MGM' },
-  { emoji: '💰', label: 'Salary Strategy', prompt: 'What salary should I target and how do I negotiate it?' },
+  { emoji: '🎯', label: 'Mock Interview', prompt: 'Start a mock Staff Engineer technical interview — ask me the first question' },
+  { emoji: '💬', label: 'About Yourself', prompt: 'Coach my "Tell me about yourself" — give me the exact script' },
+  { emoji: '⭐', label: 'STAR: MGM/MCP', prompt: 'Give me a STAR answer for my MCP integration work at MGM — make it interview-ready' },
+  { emoji: '💰', label: 'Salary Strategy', prompt: 'What salary should I ask for and what exact words do I say to negotiate?' },
 ];
 
 interface HistoryItem {
@@ -103,7 +110,7 @@ async function callGroq(
       { role: 'user', content: currentMessage },
     ],
     max_tokens: 1024,
-    temperature: 0.85,
+    temperature: 0.75,
     stream: true,
   };
 
@@ -118,7 +125,7 @@ async function callGroq(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `API error ${res.status}`);
+    throw new Error(err?.error?.message || `HTTP ${res.status}`);
   }
 
   const reader = res.body!.getReader();
@@ -146,7 +153,7 @@ async function callGroq(
           onChunk(fullText);
         }
       } catch {
-        // partial chunk — skip
+        // partial chunk
       }
     }
   }
@@ -166,6 +173,8 @@ export default function ChatInterface() {
   const [apiKey, setApiKey] = useState('');
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [transcript, setTranscript] = useState('');
+  // pendingTranscript = voice recognized text waiting for 2.5s confirm before auto-send
+  const [pendingTranscript, setPendingTranscript] = useState('');
   const [error, setError] = useState('');
   const [showTextInput, setShowTextInput] = useState(false);
   const [textInput, setTextInput] = useState('');
@@ -173,6 +182,7 @@ export default function ChatInterface() {
   const answerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const savedKey = localStorage.getItem('parakeet_api_key') || '';
@@ -190,11 +200,14 @@ export default function ChatInterface() {
     }
   }, [currentAnswer]);
 
+  // Cleanup pending timer on unmount
+  useEffect(() => () => { if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current); }, []);
+
   const speakText = useCallback(
     (text: string) => {
       if (!autoSpeak || typeof window === 'undefined' || !window.speechSynthesis) return;
       window.speechSynthesis.cancel();
-      const clean = text.replace(/[*_#`]/g, '').replace(/\n+/g, '. ');
+      const clean = text.replace(/[*_#`•]/g, '').replace(/\n+/g, '. ');
       const utterance = new SpeechSynthesisUtterance(clean);
       utterance.rate = 1.05;
       const voices = window.speechSynthesis.getVoices();
@@ -214,10 +227,11 @@ export default function ChatInterface() {
       if (!trimmed || isLoading) return;
 
       setError('');
+      setPendingTranscript('');
       setShowTextInput(false);
 
       if (!apiKey) {
-        setError('Add your free Groq API key in Settings.');
+        setError('No Groq API key. Open Settings and add your key from console.groq.com');
         setShowSettings(true);
         return;
       }
@@ -243,12 +257,15 @@ export default function ChatInterface() {
 
         if (fullText) speakText(fullText);
       } catch (err: any) {
+        const raw = err?.message || '';
         const msg =
-          err?.message?.includes('API_KEY') || err?.message?.includes('API key') || err?.message?.includes('401')
-            ? 'Invalid Groq API key. Check Settings.'
-            : err?.message?.includes('429')
-            ? 'Rate limit hit — wait a moment and try again.'
-            : err?.message || 'Something went wrong.';
+          raw.includes('401') || raw.includes('API key') || raw.includes('Unauthorized')
+            ? '❌ Invalid Groq key — check Settings'
+            : raw.includes('429')
+            ? '⏱ Rate limit — wait a moment and try again'
+            : raw.includes('503') || raw.includes('overloaded')
+            ? '🔄 Groq is busy — try again in a few seconds'
+            : `❌ ${raw || 'Something went wrong'}`;
         setCurrentAnswer('');
         setError(msg);
       } finally {
@@ -258,19 +275,37 @@ export default function ChatInterface() {
     [history, isLoading, systemPrompt, apiKey, speakText]
   );
 
+  // Cancel the pending auto-send
+  const cancelPending = useCallback(() => {
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    setPendingTranscript('');
+  }, []);
+
+  // Confirm the pending transcript immediately (don't wait for timer)
+  const confirmPending = useCallback(() => {
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    const text = pendingTranscript;
+    setPendingTranscript('');
+    if (text) sendMessage(text);
+  }, [pendingTranscript, sendMessage]);
+
   const startRecording = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
-      alert('Voice requires Safari on iOS 15+');
+      setError('Voice input requires Safari on iOS 15+ or Chrome on desktop');
       return;
     }
     window.speechSynthesis?.cancel();
     setIsSpeaking(false);
+    cancelPending();
+
     const recognition = new SR();
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
+
     recognition.onstart = () => setIsRecording(true);
+
     recognition.onresult = (event: any) => {
       let interim = '';
       let final = '';
@@ -279,26 +314,39 @@ export default function ChatInterface() {
         if (event.results[i].isFinal) final += t;
         else interim += t;
       }
+
       if (final) {
         setIsRecording(false);
         setTranscript('');
         recognition.stop();
-        sendMessage(final);
+        // Correct tech term mishearings, then show 2.5s confirm window
+        const corrected = correctTranscript(final.trim());
+        setPendingTranscript(corrected);
+        pendingTimerRef.current = setTimeout(() => {
+          setPendingTranscript('');
+          sendMessage(corrected);
+        }, 2500);
       } else {
-        setTranscript(interim);
+        setTranscript(correctTranscript(interim));
       }
     };
-    recognition.onerror = () => {
+
+    recognition.onerror = (e: any) => {
       setIsRecording(false);
       setTranscript('');
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        setError(`Mic error: ${e.error}`);
+      }
     };
+
     recognition.onend = () => {
       setIsRecording(false);
       setTranscript('');
     };
+
     recognitionRef.current = recognition;
     recognition.start();
-  }, [sendMessage]);
+  }, [sendMessage, cancelPending]);
 
   const stopRecording = useCallback(() => {
     recognitionRef.current?.stop();
@@ -313,49 +361,47 @@ export default function ChatInterface() {
 
   const clearSession = useCallback(() => {
     window.speechSynthesis?.cancel();
+    cancelPending();
     setHistory([]);
     setCurrentQuestion('');
     setCurrentAnswer('');
     setTranscript('');
     setError('');
     setIsSpeaking(false);
-  }, []);
+  }, [cancelPending]);
 
-  const isIdle = !currentQuestion && !currentAnswer && !isLoading;
+  const isIdle = !currentQuestion && !currentAnswer && !isLoading && !pendingTranscript;
 
-  const micState: 'idle' | 'recording' | 'loading' | 'speaking' =
-    isRecording ? 'recording' : isLoading ? 'loading' : isSpeaking ? 'speaking' : 'idle';
+  const micState =
+    isRecording ? 'recording' :
+    isLoading ? 'loading' :
+    isSpeaking ? 'speaking' :
+    pendingTranscript ? 'pending' : 'idle';
 
   const hintText =
-    micState === 'recording' ? 'Listening… speak your question' :
+    micState === 'recording' ? 'Listening… speak now' :
     micState === 'loading' ? 'Coach is thinking…' :
-    micState === 'speaking' ? 'Speaking… tap mic to interrupt' :
+    micState === 'speaking' ? 'Speaking — tap mic to stop' :
+    micState === 'pending' ? 'Tap ✓ to send or ✕ to cancel' :
     isIdle ? 'Tap the mic and ask anything' :
-    'Tap the mic for your next question';
+    'Tap mic for next question';
 
   return (
     <div className="flex flex-col bg-[#08080c] text-white select-none" style={{ height: '100dvh' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div
         className="flex items-center justify-between px-5 pb-3 bg-black/80 backdrop-blur-xl border-b border-white/[0.06] flex-shrink-0 z-10"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
       >
-        <button
-          onClick={clearSession}
-          className="text-white/40 text-sm font-medium active:text-white min-w-[52px]"
-        >
+        <button onClick={clearSession} className="text-white/40 text-sm font-medium active:text-white min-w-[52px]">
           {history.length > 0 || currentQuestion ? 'New' : ''}
         </button>
         <div className="flex flex-col items-center">
           <span className="text-base font-bold tracking-tight">🦜 Parakeet</span>
           <span className="text-[10px] text-indigo-400 font-semibold tracking-widest uppercase">Interview Coach</span>
         </div>
-        <button
-          onClick={() => setShowSettings(true)}
-          className="text-white/40 active:text-white min-w-[52px] flex justify-end"
-          aria-label="Settings"
-        >
+        <button onClick={() => setShowSettings(true)} className="text-white/40 active:text-white min-w-[52px] flex justify-end" aria-label="Settings">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -363,10 +409,10 @@ export default function ChatInterface() {
         </button>
       </div>
 
-      {/* Main content area */}
+      {/* ── Main content ── */}
       <div ref={answerRef} className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' } as any}>
 
-        {/* Idle / welcome screen */}
+        {/* Welcome / idle */}
         {isIdle && (
           <div className="flex flex-col items-center justify-center min-h-full px-6 py-8 gap-5">
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-2xl shadow-purple-500/30 text-5xl">
@@ -376,20 +422,19 @@ export default function ChatInterface() {
               <h1 className="text-2xl font-bold gradient-text mb-1">Parakeet AI</h1>
               <p className="text-indigo-400 text-xs font-semibold tracking-widest uppercase mb-3">Your Personal Interview Coach</p>
               <p className="text-white/40 text-sm leading-relaxed max-w-[280px] mx-auto">
-                I know your full story — 11 years, MGM, BMW, Maersk, AgentPulse. Let's get you that dream role.
+                I know your full story — 11 years, MGM, BMW, Maersk, AgentPulse. Let's crack that dream role.
               </p>
             </div>
 
             {error && (
-              <div className="glass rounded-2xl p-4 text-sm text-orange-300 w-full max-w-xs text-left">
-                ⚠️ {error}
-                <button onClick={() => setShowSettings(true)} className="block mt-2 text-indigo-400 underline">
+              <div className="glass rounded-2xl p-4 w-full max-w-xs">
+                <p className="text-sm text-orange-300">{error}</p>
+                <button onClick={() => setShowSettings(true)} className="mt-2 text-indigo-400 text-sm underline">
                   Open Settings →
                 </button>
               </div>
             )}
 
-            {/* Quick chips */}
             <div className="grid grid-cols-2 gap-2.5 w-full max-w-xs">
               {QUICK_PROMPTS.map((p) => (
                 <button
@@ -397,7 +442,7 @@ export default function ChatInterface() {
                   onClick={() => sendMessage(p.prompt)}
                   className="glass rounded-2xl p-3.5 text-left active:bg-white/10 transition-colors"
                 >
-                  <div className="text-lg mb-1">{p.emoji}</div>
+                  <div className="text-xl mb-1.5">{p.emoji}</div>
                   <div className="text-xs font-semibold text-white/80 leading-tight">{p.label}</div>
                 </button>
               ))}
@@ -405,117 +450,141 @@ export default function ChatInterface() {
           </div>
         )}
 
-        {/* Active session: question + answer */}
+        {/* Active session */}
         {!isIdle && (
           <div className="px-5 pt-6 pb-4">
-            {/* Current question */}
             {currentQuestion && (
               <div className="mb-5">
-                <p className="text-[11px] text-white/30 uppercase tracking-widest font-semibold mb-2">You</p>
-                <p className="text-white/60 text-[15px] leading-relaxed">{currentQuestion}</p>
+                <p className="text-[11px] text-white/28 uppercase tracking-widest font-semibold mb-2">You</p>
+                <p className="text-white/55 text-[15px] leading-relaxed">{currentQuestion}</p>
               </div>
             )}
 
-            {/* Coach label */}
             {(currentAnswer || isLoading) && (
               <p className="text-[11px] text-indigo-400 uppercase tracking-widest font-semibold mb-3">Coach</p>
             )}
 
-            {/* Loading dots */}
             {isLoading && !currentAnswer && (
-              <div className="flex gap-1.5 items-center py-2 mb-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-indigo-400" style={{ animation: 'typing-dot 1.2s ease-in-out infinite', animationDelay: '0s' }} />
-                <div className="w-2.5 h-2.5 rounded-full bg-indigo-400" style={{ animation: 'typing-dot 1.2s ease-in-out infinite', animationDelay: '0.2s' }} />
-                <div className="w-2.5 h-2.5 rounded-full bg-indigo-400" style={{ animation: 'typing-dot 1.2s ease-in-out infinite', animationDelay: '0.4s' }} />
+              <div className="flex gap-1.5 items-center py-2">
+                {[0, 0.2, 0.4].map((d, i) => (
+                  <div key={i} className="w-2.5 h-2.5 rounded-full bg-indigo-400"
+                    style={{ animation: 'typing-dot 1.2s ease-in-out infinite', animationDelay: `${d}s` }} />
+                ))}
               </div>
             )}
 
-            {/* Streaming answer — large, readable */}
             {currentAnswer && (
               <div className="text-white text-[17px] leading-[1.75] whitespace-pre-wrap tracking-[0.01em]">
                 {currentAnswer}
                 {isLoading && (
-                  <span className="inline-block w-0.5 h-5 bg-indigo-400 ml-0.5 align-middle" style={{ animation: 'cursor-blink 0.8s step-end infinite' }} />
+                  <span className="inline-block w-0.5 h-5 bg-indigo-400 ml-0.5 align-middle"
+                    style={{ animation: 'cursor-blink 0.8s step-end infinite' }} />
                 )}
               </div>
             )}
 
-            {/* Error inside session */}
-            {error && !isIdle && (
-              <div className="mt-4 glass rounded-2xl p-4 text-sm text-orange-300">
-                ⚠️ {error}
-                <button onClick={() => setShowSettings(true)} className="block mt-2 text-indigo-400 underline">
-                  Open Settings →
-                </button>
+            {error && (
+              <div className="mt-4 glass rounded-2xl p-4">
+                <p className="text-sm text-orange-300">{error}</p>
+                {error.includes('key') && (
+                  <button onClick={() => setShowSettings(true)} className="mt-2 text-indigo-400 text-sm underline block">
+                    Open Settings →
+                  </button>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Live transcript strip */}
+      {/* ── Live interim transcript ── */}
       {transcript && (
-        <div className="px-5 py-2.5 border-t border-white/[0.06] bg-black/40 flex-shrink-0">
-          <p className="text-indigo-300 text-sm italic leading-snug">{transcript}…</p>
+        <div className="px-5 py-2.5 border-t border-white/[0.06] bg-black/50 flex-shrink-0">
+          <p className="text-indigo-300 text-sm italic">{transcript}…</p>
         </div>
       )}
 
-      {/* Bottom controls */}
+      {/* ── Pending transcript confirm banner ── */}
+      {pendingTranscript && (
+        <div className="px-4 py-3 border-t border-white/[0.06] bg-indigo-950/70 flex-shrink-0">
+          <p className="text-white/60 text-xs uppercase tracking-wider font-semibold mb-1.5">Heard:</p>
+          <p className="text-white text-sm font-medium mb-3 leading-snug">"{pendingTranscript}"</p>
+          <div className="flex gap-2">
+            <button
+              onClick={confirmPending}
+              className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-sm font-semibold text-white active:opacity-80"
+            >
+              ✓ Send
+            </button>
+            <button
+              onClick={cancelPending}
+              className="flex-1 py-2.5 rounded-xl glass text-sm font-medium text-white/60 active:bg-white/10"
+            >
+              ✕ Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bottom controls ── */}
       <div
         className="flex-shrink-0 flex flex-col items-center bg-black/70 backdrop-blur-xl border-t border-white/[0.06]"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)', paddingTop: '16px' }}
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)', paddingTop: '14px' }}
       >
-        {/* Waveform animation — visible while recording or speaking */}
-        <div className="h-8 flex items-center justify-center mb-2">
+        {/* Waveform */}
+        <div className="h-7 flex items-center justify-center mb-2">
           {(isRecording || isSpeaking) ? (
             <div className="flex gap-1 items-center">
-              {[0.0, 0.1, 0.2, 0.1, 0.3, 0.1, 0.2, 0.1, 0.0].map((delay, i) => (
+              {[12, 20, 28, 20, 32, 20, 28, 20, 12].map((h, i) => (
                 <div
                   key={i}
                   className={`w-1.5 rounded-full ${isRecording ? 'bg-red-400' : 'bg-indigo-400'}`}
-                  style={{ animation: 'wave 0.9s ease-in-out infinite alternate', animationDelay: `${delay + i * 0.07}s`, height: `${12 + i % 3 * 8}px` }}
+                  style={{
+                    height: `${h}px`,
+                    animation: 'wave 0.9s ease-in-out infinite alternate',
+                    animationDelay: `${i * 0.09}s`,
+                  }}
                 />
               ))}
             </div>
           ) : (
-            <div className="h-8" />
+            <div className="h-7" />
           )}
         </div>
 
-        {/* Hint text */}
-        <p className="text-xs text-white/30 mb-4 font-medium tracking-wide">{hintText}</p>
+        {/* Hint */}
+        <p className="text-xs text-white/30 mb-3.5 font-medium tracking-wide text-center px-4">{hintText}</p>
 
-        {/* Big mic button */}
+        {/* Big mic */}
         <button
           onClick={
             isRecording ? stopRecording :
             isSpeaking ? stopSpeaking :
+            pendingTranscript ? confirmPending :
             isLoading ? undefined :
             startRecording
           }
           disabled={isLoading}
-          className={`w-[76px] h-[76px] rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 active:scale-95 mb-4
-            ${isRecording
-              ? 'bg-red-500 shadow-red-500/50 scale-110'
-              : isSpeaking
-              ? 'bg-indigo-500 shadow-indigo-500/40'
-              : isLoading
-              ? 'bg-white/10 shadow-none'
-              : 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-purple-500/40'
-            }`}
+          className={`w-[76px] h-[76px] rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 active:scale-95 mb-3
+            ${isRecording ? 'bg-red-500 shadow-red-500/50 scale-110'
+              : isSpeaking ? 'bg-indigo-500 shadow-indigo-500/40'
+              : pendingTranscript ? 'bg-green-500 shadow-green-500/40'
+              : isLoading ? 'bg-white/10 shadow-none'
+              : 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-purple-500/40'}`}
         >
           {isSpeaking ? (
-            /* Square stop icon */
             <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
               <rect x="5" y="5" width="14" height="14" rx="2" />
             </svg>
+          ) : pendingTranscript ? (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
           ) : isLoading ? (
-            /* Spinner */
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" className="animate-spin">
               <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
             </svg>
           ) : (
-            /* Mic icon */
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
@@ -525,28 +594,24 @@ export default function ChatInterface() {
           )}
         </button>
 
-        {/* Type instead toggle */}
+        {/* Type instead */}
         <button
           onClick={() => {
             setShowTextInput((v) => !v);
             if (!showTextInput) setTimeout(() => textInputRef.current?.focus(), 100);
           }}
-          className="text-xs text-white/25 active:text-white/60 mb-1 px-4 py-1"
+          className="text-xs text-white/25 active:text-white/60 px-4 py-1 mb-1"
         >
           {showTextInput ? 'Hide keyboard' : 'Type instead'}
         </button>
 
-        {/* Text input — secondary */}
         {showTextInput && (
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (textInput.trim()) {
-                sendMessage(textInput.trim());
-                setTextInput('');
-              }
+              if (textInput.trim()) { sendMessage(textInput.trim()); setTextInput(''); }
             }}
-            className="flex gap-2 px-4 mt-2 w-full"
+            className="flex gap-2 px-4 mt-1.5 w-full"
           >
             <input
               ref={textInputRef}
