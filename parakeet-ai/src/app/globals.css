@@ -98,3 +98,20 @@ body {
 .pulse-ring {
   animation: pulseRing 1.2s ease-out infinite;
 }
+
+/* Typing dots keyframe (used inline via style prop) */
+@keyframes typing-dot {
+  0%, 100% { transform: translateY(0); opacity: 0.35; }
+  50% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* Cursor blink for streaming text */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Safe-area bottom padding helper */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}

@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import MessageBubble, { Message } from './MessageBubble';
-import VoiceButton from './VoiceButton';
 import SettingsModal from './SettingsModal';
 
 const ANUP_SYSTEM = `You are Parakeet — Anup Verma's brutally honest, elite personal interview coach and technical advisor. You know everything about Anup's career and you use it to give hyper-specific coaching.
@@ -72,19 +70,25 @@ STYLE RULES
 - When doing mock interview: stay IN CHARACTER as interviewer until he explicitly asks for feedback
 - Always push him to quantify impact with numbers
 - Remind him his AI/MCP/open-source work is a MASSIVE differentiator — most candidates don't have this
+- Keep answers concise and spoken-word friendly so TTS sounds natural
 
 Start every fresh session by asking: "What are we drilling today? (1) Mock Interview (2) STAR Stories (3) System Design (4) Salary Negotiation (5) Specific question/topic"`;
 
 const QUICK_PROMPTS = [
-  '🎯 Mock interview: System Design',
-  '💬 "Tell me about yourself"',
-  '⭐ STAR story for MGM/MCP work',
-  '💰 Salary negotiation strategy',
+  { emoji: '🎯', label: 'Mock Interview', prompt: 'Start a mock system design interview for a Staff Engineer role' },
+  { emoji: '💬', label: 'Tell me about yourself', prompt: 'Coach me on my "Tell me about yourself" answer' },
+  { emoji: '⭐', label: 'STAR: MGM/MCP', prompt: 'Help me craft a STAR story for my MCP integration work at MGM' },
+  { emoji: '💰', label: 'Salary Strategy', prompt: 'What salary should I target and how do I negotiate it?' },
 ];
+
+interface HistoryItem {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 async function callGroq(
   apiKey: string,
-  messages: Message[],
+  history: HistoryItem[],
   currentMessage: string,
   systemPrompt: string,
   onChunk: (text: string) => void
@@ -93,13 +97,13 @@ async function callGroq(
     model: 'llama-3.3-70b-versatile',
     messages: [
       { role: 'system', content: systemPrompt },
-      ...messages
+      ...history
         .filter((m) => m.content && !m.content.startsWith('⚠️'))
         .map((m) => ({ role: m.role, content: m.content })),
       { role: 'user', content: currentMessage },
     ],
-    max_tokens: 2048,
-    temperature: 0.9,
+    max_tokens: 1024,
+    temperature: 0.85,
     stream: true,
   };
 
@@ -151,41 +155,47 @@ async function callGroq(
 }
 
 export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState('');
+  const [currentAnswer, setCurrentAnswer] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(true);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState('');
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textInput, setTextInput] = useState('');
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const answerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const savedKey = localStorage.getItem('parakeet_api_key') || '';
     const savedPrompt = localStorage.getItem('parakeet_system_prompt') || '';
-    const savedSpeak = localStorage.getItem('parakeet_auto_speak') === 'true';
+    const savedSpeak = localStorage.getItem('parakeet_auto_speak');
     setApiKey(savedKey);
     setSystemPrompt(savedPrompt);
-    setAutoSpeak(savedSpeak);
+    setAutoSpeak(savedSpeak === null ? true : savedSpeak === 'true');
     if (!savedKey) setTimeout(() => setShowSettings(true), 600);
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (currentAnswer) {
+      answerRef.current?.scrollTo({ top: answerRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, [currentAnswer]);
 
   const speakText = useCallback(
     (text: string) => {
       if (!autoSpeak || typeof window === 'undefined' || !window.speechSynthesis) return;
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
+      const clean = text.replace(/[*_#`]/g, '').replace(/\n+/g, '. ');
+      const utterance = new SpeechSynthesisUtterance(clean);
       utterance.rate = 1.05;
       const voices = window.speechSynthesis.getVoices();
       const preferred = voices.find((v) => v.name.includes('Samantha')) || voices.find((v) => v.lang.startsWith('en'));
@@ -204,92 +214,148 @@ export default function ChatInterface() {
       if (!trimmed || isLoading) return;
 
       setError('');
+      setShowTextInput(false);
 
       if (!apiKey) {
-        setError('Add your free Groq API key in Settings (console.groq.com).');
+        setError('Add your free Groq API key in Settings.');
         setShowSettings(true);
         return;
       }
 
-      const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', content: trimmed, timestamp: new Date() };
-      const assistantId = `a-${Date.now()}`;
-      const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', timestamp: new Date() };
-
-      const prevMessages = messages;
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      setInput('');
-      setTranscript('');
+      setCurrentQuestion(trimmed);
+      setCurrentAnswer('');
       setIsLoading(true);
 
       try {
         const fullText = await callGroq(
           apiKey,
-          prevMessages,
+          history,
           trimmed,
           systemPrompt?.trim() || ANUP_SYSTEM,
-          (partial) => {
-            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: partial } : m)));
-          }
+          (partial) => setCurrentAnswer(partial)
         );
+
+        setHistory((prev) => [
+          ...prev,
+          { role: 'user', content: trimmed },
+          { role: 'assistant', content: fullText },
+        ]);
+
         if (fullText) speakText(fullText);
       } catch (err: any) {
-        const msg = err?.message?.includes('API_KEY') || err?.message?.includes('API key')
-          ? 'Invalid API key. Please check Settings.'
-          : err?.message || 'Something went wrong.';
-        setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `⚠️ ${msg}` } : m)));
+        const msg =
+          err?.message?.includes('API_KEY') || err?.message?.includes('API key') || err?.message?.includes('401')
+            ? 'Invalid Groq API key. Check Settings.'
+            : err?.message?.includes('429')
+            ? 'Rate limit hit — wait a moment and try again.'
+            : err?.message || 'Something went wrong.';
+        setCurrentAnswer('');
         setError(msg);
       } finally {
         setIsLoading(false);
       }
     },
-    [messages, isLoading, systemPrompt, apiKey, speakText]
+    [history, isLoading, systemPrompt, apiKey, speakText]
   );
 
   const startRecording = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert('Voice requires Safari on iOS 15+'); return; }
+    if (!SR) {
+      alert('Voice requires Safari on iOS 15+');
+      return;
+    }
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
     const recognition = new SR();
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
     recognition.onstart = () => setIsRecording(true);
     recognition.onresult = (event: any) => {
-      let interim = '', final = '';
+      let interim = '';
+      let final = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const t = event.results[i][0].transcript;
-        if (event.results[i].isFinal) final += t; else interim += t;
+        if (event.results[i].isFinal) final += t;
+        else interim += t;
       }
-      if (final) { setIsRecording(false); recognition.stop(); sendMessage(final); }
-      else setTranscript(interim);
+      if (final) {
+        setIsRecording(false);
+        setTranscript('');
+        recognition.stop();
+        sendMessage(final);
+      } else {
+        setTranscript(interim);
+      }
     };
-    recognition.onerror = () => { setIsRecording(false); setTranscript(''); };
-    recognition.onend = () => setIsRecording(false);
+    recognition.onerror = () => {
+      setIsRecording(false);
+      setTranscript('');
+    };
+    recognition.onend = () => {
+      setIsRecording(false);
+      setTranscript('');
+    };
     recognitionRef.current = recognition;
     recognition.start();
   }, [sendMessage]);
 
-  const stopRecording = useCallback(() => { recognitionRef.current?.stop(); setIsRecording(false); setTranscript(''); }, []);
-  const stopSpeaking = useCallback(() => { window.speechSynthesis?.cancel(); setIsSpeaking(false); }, []);
-  const clearChat = useCallback(() => {
-    if (!messages.length) return;
-    setMessages([]);
+  const stopRecording = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsRecording(false);
+    setTranscript('');
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
     window.speechSynthesis?.cancel();
     setIsSpeaking(false);
-  }, [messages.length]);
+  }, []);
+
+  const clearSession = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    setHistory([]);
+    setCurrentQuestion('');
+    setCurrentAnswer('');
+    setTranscript('');
+    setError('');
+    setIsSpeaking(false);
+  }, []);
+
+  const isIdle = !currentQuestion && !currentAnswer && !isLoading;
+
+  const micState: 'idle' | 'recording' | 'loading' | 'speaking' =
+    isRecording ? 'recording' : isLoading ? 'loading' : isSpeaking ? 'speaking' : 'idle';
+
+  const hintText =
+    micState === 'recording' ? 'Listening… speak your question' :
+    micState === 'loading' ? 'Coach is thinking…' :
+    micState === 'speaking' ? 'Speaking… tap mic to interrupt' :
+    isIdle ? 'Tap the mic and ask anything' :
+    'Tap the mic for your next question';
 
   return (
-    <div className="flex flex-col bg-[#08080c] text-white" style={{ height: '100dvh' }}>
+    <div className="flex flex-col bg-[#08080c] text-white select-none" style={{ height: '100dvh' }}>
+
       {/* Header */}
-      <div className="flex items-center justify-between px-5 pb-3 bg-black/70 backdrop-blur-xl border-b border-white/[0.06] z-10 flex-shrink-0"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
-        <button onClick={clearChat} className="text-white/40 text-sm font-medium active:text-white/80 min-w-[44px] text-left">
-          {messages.length > 0 ? 'Clear' : ''}
+      <div
+        className="flex items-center justify-between px-5 pb-3 bg-black/80 backdrop-blur-xl border-b border-white/[0.06] flex-shrink-0 z-10"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
+      >
+        <button
+          onClick={clearSession}
+          className="text-white/40 text-sm font-medium active:text-white min-w-[52px]"
+        >
+          {history.length > 0 || currentQuestion ? 'New' : ''}
         </button>
         <div className="flex flex-col items-center">
           <span className="text-base font-bold tracking-tight">🦜 Parakeet</span>
-          <span className="text-[10px] text-indigo-400 font-medium tracking-wider">INTERVIEW COACH</span>
+          <span className="text-[10px] text-indigo-400 font-semibold tracking-widest uppercase">Interview Coach</span>
         </div>
-        <button onClick={() => setShowSettings(true)} className="text-white/40 active:text-white/80 min-w-[44px] flex justify-end" aria-label="Settings">
+        <button
+          onClick={() => setShowSettings(true)}
+          className="text-white/40 active:text-white min-w-[52px] flex justify-end"
+          aria-label="Settings"
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -297,88 +363,229 @@ export default function ChatInterface() {
         </button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ WebkitOverflowScrolling: 'touch' } as any}>
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center min-h-full gap-5 text-center py-6">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-2xl shadow-purple-500/30 text-4xl">
+      {/* Main content area */}
+      <div ref={answerRef} className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' } as any}>
+
+        {/* Idle / welcome screen */}
+        {isIdle && (
+          <div className="flex flex-col items-center justify-center min-h-full px-6 py-8 gap-5">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-2xl shadow-purple-500/30 text-5xl">
               🦜
             </div>
-            <div>
+            <div className="text-center">
               <h1 className="text-2xl font-bold gradient-text mb-1">Parakeet AI</h1>
-              <p className="text-indigo-400 text-xs font-semibold tracking-widest uppercase mb-2">Your Personal Interview Coach</p>
-              <p className="text-white/40 text-sm max-w-[270px] mx-auto leading-relaxed">
-                I know your full resume — 11 years, MGM, BMW, Maersk, Air Canada, AgentPulse. Let's get you that dream job.
+              <p className="text-indigo-400 text-xs font-semibold tracking-widest uppercase mb-3">Your Personal Interview Coach</p>
+              <p className="text-white/40 text-sm leading-relaxed max-w-[280px] mx-auto">
+                I know your full story — 11 years, MGM, BMW, Maersk, AgentPulse. Let's get you that dream role.
               </p>
             </div>
+
             {error && (
-              <div className="glass rounded-2xl p-4 text-sm text-orange-300 max-w-xs text-left">
+              <div className="glass rounded-2xl p-4 text-sm text-orange-300 w-full max-w-xs text-left">
                 ⚠️ {error}
-                <button onClick={() => setShowSettings(true)} className="block mt-2 text-indigo-400 underline">Open Settings →</button>
+                <button onClick={() => setShowSettings(true)} className="block mt-2 text-indigo-400 underline">
+                  Open Settings →
+                </button>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2 w-full max-w-xs">
+
+            {/* Quick chips */}
+            <div className="grid grid-cols-2 gap-2.5 w-full max-w-xs">
               {QUICK_PROMPTS.map((p) => (
-                <button key={p} onClick={() => sendMessage(p)}
-                  className="glass rounded-2xl p-3 text-xs text-white/70 active:bg-white/10 transition-colors text-left leading-relaxed font-medium">
-                  {p}
+                <button
+                  key={p.label}
+                  onClick={() => sendMessage(p.prompt)}
+                  className="glass rounded-2xl p-3.5 text-left active:bg-white/10 transition-colors"
+                >
+                  <div className="text-lg mb-1">{p.emoji}</div>
+                  <div className="text-xs font-semibold text-white/80 leading-tight">{p.label}</div>
                 </button>
               ))}
             </div>
           </div>
         )}
-        {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
-        <div ref={messagesEndRef} />
+
+        {/* Active session: question + answer */}
+        {!isIdle && (
+          <div className="px-5 pt-6 pb-4">
+            {/* Current question */}
+            {currentQuestion && (
+              <div className="mb-5">
+                <p className="text-[11px] text-white/30 uppercase tracking-widest font-semibold mb-2">You</p>
+                <p className="text-white/60 text-[15px] leading-relaxed">{currentQuestion}</p>
+              </div>
+            )}
+
+            {/* Coach label */}
+            {(currentAnswer || isLoading) && (
+              <p className="text-[11px] text-indigo-400 uppercase tracking-widest font-semibold mb-3">Coach</p>
+            )}
+
+            {/* Loading dots */}
+            {isLoading && !currentAnswer && (
+              <div className="flex gap-1.5 items-center py-2 mb-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-indigo-400" style={{ animation: 'typing-dot 1.2s ease-in-out infinite', animationDelay: '0s' }} />
+                <div className="w-2.5 h-2.5 rounded-full bg-indigo-400" style={{ animation: 'typing-dot 1.2s ease-in-out infinite', animationDelay: '0.2s' }} />
+                <div className="w-2.5 h-2.5 rounded-full bg-indigo-400" style={{ animation: 'typing-dot 1.2s ease-in-out infinite', animationDelay: '0.4s' }} />
+              </div>
+            )}
+
+            {/* Streaming answer — large, readable */}
+            {currentAnswer && (
+              <div className="text-white text-[17px] leading-[1.75] whitespace-pre-wrap tracking-[0.01em]">
+                {currentAnswer}
+                {isLoading && (
+                  <span className="inline-block w-0.5 h-5 bg-indigo-400 ml-0.5 align-middle" style={{ animation: 'cursor-blink 0.8s step-end infinite' }} />
+                )}
+              </div>
+            )}
+
+            {/* Error inside session */}
+            {error && !isIdle && (
+              <div className="mt-4 glass rounded-2xl p-4 text-sm text-orange-300">
+                ⚠️ {error}
+                <button onClick={() => setShowSettings(true)} className="block mt-2 text-indigo-400 underline">
+                  Open Settings →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Live transcript strip */}
       {transcript && (
-        <div className="px-5 py-2 text-white/50 text-sm italic border-t border-white/[0.06] bg-black/50 flex-shrink-0">{transcript}</div>
-      )}
-
-      {isSpeaking && (
-        <div className="px-4 pb-1 flex-shrink-0">
-          <button onClick={stopSpeaking} className="w-full glass rounded-2xl py-2.5 px-4 flex items-center gap-3 text-sm text-white/60 active:bg-white/10">
-            <div className="flex gap-0.5 items-center">
-              {[1,2,3,4,5].map((i) => <div key={i} className="wave-bar w-1 bg-indigo-400 rounded-full" style={{ animationDelay: `${(i-1)*0.12}s` }} />)}
-            </div>
-            <span>Speaking… tap to stop</span>
-          </button>
+        <div className="px-5 py-2.5 border-t border-white/[0.06] bg-black/40 flex-shrink-0">
+          <p className="text-indigo-300 text-sm italic leading-snug">{transcript}…</p>
         </div>
       )}
 
-      {/* Input bar */}
-      <div className="flex-shrink-0 px-4 pt-3 bg-black/70 backdrop-blur-xl border-t border-white/[0.06]"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
-        <form onSubmit={(e) => { e.preventDefault(); sendMessage(input); }} className="flex items-center gap-3">
-          <div className="flex-1 glass rounded-2xl flex items-center px-4 py-3 min-h-[48px]">
-            <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask your coach anything…" disabled={isLoading || isRecording}
+      {/* Bottom controls */}
+      <div
+        className="flex-shrink-0 flex flex-col items-center bg-black/70 backdrop-blur-xl border-t border-white/[0.06]"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)', paddingTop: '16px' }}
+      >
+        {/* Waveform animation — visible while recording or speaking */}
+        <div className="h-8 flex items-center justify-center mb-2">
+          {(isRecording || isSpeaking) ? (
+            <div className="flex gap-1 items-center">
+              {[0.0, 0.1, 0.2, 0.1, 0.3, 0.1, 0.2, 0.1, 0.0].map((delay, i) => (
+                <div
+                  key={i}
+                  className={`w-1.5 rounded-full ${isRecording ? 'bg-red-400' : 'bg-indigo-400'}`}
+                  style={{ animation: 'wave 0.9s ease-in-out infinite alternate', animationDelay: `${delay + i * 0.07}s`, height: `${12 + i % 3 * 8}px` }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="h-8" />
+          )}
+        </div>
+
+        {/* Hint text */}
+        <p className="text-xs text-white/30 mb-4 font-medium tracking-wide">{hintText}</p>
+
+        {/* Big mic button */}
+        <button
+          onClick={
+            isRecording ? stopRecording :
+            isSpeaking ? stopSpeaking :
+            isLoading ? undefined :
+            startRecording
+          }
+          disabled={isLoading}
+          className={`w-[76px] h-[76px] rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 active:scale-95 mb-4
+            ${isRecording
+              ? 'bg-red-500 shadow-red-500/50 scale-110'
+              : isSpeaking
+              ? 'bg-indigo-500 shadow-indigo-500/40'
+              : isLoading
+              ? 'bg-white/10 shadow-none'
+              : 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-purple-500/40'
+            }`}
+        >
+          {isSpeaking ? (
+            /* Square stop icon */
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
+              <rect x="5" y="5" width="14" height="14" rx="2" />
+            </svg>
+          ) : isLoading ? (
+            /* Spinner */
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" className="animate-spin">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+            </svg>
+          ) : (
+            /* Mic icon */
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          )}
+        </button>
+
+        {/* Type instead toggle */}
+        <button
+          onClick={() => {
+            setShowTextInput((v) => !v);
+            if (!showTextInput) setTimeout(() => textInputRef.current?.focus(), 100);
+          }}
+          className="text-xs text-white/25 active:text-white/60 mb-1 px-4 py-1"
+        >
+          {showTextInput ? 'Hide keyboard' : 'Type instead'}
+        </button>
+
+        {/* Text input — secondary */}
+        {showTextInput && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (textInput.trim()) {
+                sendMessage(textInput.trim());
+                setTextInput('');
+              }
+            }}
+            className="flex gap-2 px-4 mt-2 w-full"
+          >
+            <input
+              ref={textInputRef}
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Type your question…"
+              disabled={isLoading}
               style={{ fontSize: '16px' }}
-              className="flex-1 bg-transparent text-white placeholder-white/25 outline-none text-base" />
-            {input.trim() && (
-              <button type="submit" disabled={isLoading}
-                className="ml-2 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center active:opacity-80 flex-shrink-0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-              </button>
-            )}
-          </div>
-          <VoiceButton isRecording={isRecording} isLoading={isLoading} onStart={startRecording} onStop={stopRecording} />
-        </form>
+              className="flex-1 glass rounded-xl px-4 py-2.5 text-white placeholder-white/25 outline-none text-sm"
+            />
+            <button
+              type="submit"
+              disabled={isLoading || !textInput.trim()}
+              className="px-4 py-2.5 rounded-xl bg-indigo-500 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+            >
+              Send
+            </button>
+          </form>
+        )}
       </div>
 
       {showSettings && (
-        <SettingsModal apiKey={apiKey} systemPrompt={systemPrompt} autoSpeak={autoSpeak}
+        <SettingsModal
+          apiKey={apiKey}
+          systemPrompt={systemPrompt}
+          autoSpeak={autoSpeak}
           onClose={() => setShowSettings(false)}
           onSave={(k, p, s) => {
-            setApiKey(k); setSystemPrompt(p); setAutoSpeak(s);
+            setApiKey(k);
+            setSystemPrompt(p);
+            setAutoSpeak(s);
             localStorage.setItem('parakeet_api_key', k);
             localStorage.setItem('parakeet_system_prompt', p);
             localStorage.setItem('parakeet_auto_speak', s.toString());
             setShowSettings(false);
             if (error && k) setError('');
-          }} />
+          }}
+        />
       )}
     </div>
   );
