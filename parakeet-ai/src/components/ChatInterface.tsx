@@ -1,14 +1,20 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import Anthropic from '@anthropic-ai/sdk';
 import MessageBubble, { Message } from './MessageBubble';
 import VoiceButton from './VoiceButton';
 import SettingsModal from './SettingsModal';
 
+const DEFAULT_SYSTEM = `You are Parakeet, a friendly, witty, and intelligent personal AI assistant.
+Keep responses concise and conversational — think texting a smart friend, not reading a manual.
+For complex topics, be clear and structured but still brief. Use line breaks for readability.
+If asked who you are, say you're Parakeet, a personal AI assistant.`;
+
 const QUICK_PROMPTS = [
   'What can you do?',
   'Tell me a joke 😄',
-  "What's the weather like today?",
+  'Explain something complex simply',
   'Help me brainstorm',
 ];
 
@@ -36,6 +42,9 @@ export default function ChatInterface() {
     setApiKey(savedKey);
     setSystemPrompt(savedPrompt);
     setAutoSpeak(savedSpeak);
+    if (!savedKey) {
+      setTimeout(() => setShowSettings(true), 600);
+    }
   }, []);
 
   useEffect(() => {
@@ -68,6 +77,13 @@ export default function ChatInterface() {
       if (!trimmed || isLoading) return;
 
       setError('');
+
+      if (!apiKey) {
+        setError('Add your Anthropic API key in Settings to start chatting.');
+        setShowSettings(true);
+        return;
+      }
+
       const userMsg: Message = {
         id: `u-${Date.now()}`,
         role: 'user',
@@ -88,46 +104,39 @@ export default function ChatInterface() {
       setIsLoading(true);
 
       try {
+        const client = new Anthropic({ apiKey: apiKey.trim(), dangerouslyAllowBrowser: true });
         const history = [...messages, userMsg].map((m) => ({
-          role: m.role,
+          role: m.role as 'user' | 'assistant',
           content: m.content,
         }));
 
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: history,
-            systemPrompt: systemPrompt || undefined,
-            apiKey: apiKey || undefined,
-          }),
+        const stream = client.messages.stream({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          system: systemPrompt?.trim() || DEFAULT_SYSTEM,
+          messages: history,
         });
 
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || 'Request failed');
-        }
-
-        const reader = res.body!.getReader();
-        const decoder = new TextDecoder();
         let fullText = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          fullText += decoder.decode(value, { stream: true });
-          setMessages((prev) =>
-            prev.map((m) => (m.id === assistantId ? { ...m, content: fullText } : m))
-          );
+        for await (const chunk of stream) {
+          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+            fullText += chunk.delta.text;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: fullText } : m))
+            );
+          }
         }
 
         if (fullText) speakText(fullText);
       } catch (err: any) {
-        const msg = err.message || 'Something went wrong. Please try again.';
+        const msg =
+          err?.status === 401
+            ? 'Invalid API key. Please check your key in Settings.'
+            : err?.message || 'Something went wrong. Please try again.';
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantId ? { ...m, content: `⚠️ ${msg}` } : m))
         );
-        if (msg.includes('API key')) setError(msg);
+        if (err?.status === 401) setError(msg);
       } finally {
         setIsLoading(false);
       }
@@ -139,7 +148,7 @@ export default function ChatInterface() {
     const SR =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
-      alert('Voice input requires Safari on iOS 15+ or a modern browser.');
+      alert('Voice input requires Safari on iOS 15+ or Chrome on desktop.');
       return;
     }
     const recognition = new SR();
@@ -171,9 +180,7 @@ export default function ChatInterface() {
       setTranscript('');
     };
 
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
+    recognition.onend = () => setIsRecording(false);
 
     recognitionRef.current = recognition;
     recognition.start();
@@ -211,9 +218,7 @@ export default function ChatInterface() {
           {messages.length > 0 ? 'Clear' : ''}
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-base font-bold tracking-tight">
-            🦜 Parakeet
-          </span>
+          <span className="text-base font-bold tracking-tight">🦜 Parakeet</span>
           {(isLoading || isSpeaking) && (
             <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
           )}
@@ -231,7 +236,10 @@ export default function ChatInterface() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ WebkitOverflowScrolling: 'touch' } as any}>
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
+        style={{ WebkitOverflowScrolling: 'touch' } as any}
+      >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center min-h-full gap-6 text-center py-8">
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-2xl shadow-purple-500/30 text-5xl">
@@ -248,9 +256,9 @@ export default function ChatInterface() {
                 ⚠️ {error}
                 <button
                   onClick={() => setShowSettings(true)}
-                  className="block mt-1 text-indigo-400 underline"
+                  className="block mt-2 text-indigo-400 underline"
                 >
-                  Open Settings to add API key
+                  Open Settings →
                 </button>
               </div>
             )}
@@ -307,7 +315,13 @@ export default function ChatInterface() {
         className="flex-shrink-0 px-4 pt-3 bg-black/70 backdrop-blur-xl border-t border-white/[0.06]"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
       >
-        <form onSubmit={(e) => { e.preventDefault(); sendMessage(input); }} className="flex items-center gap-3">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendMessage(input);
+          }}
+          className="flex items-center gap-3"
+        >
           <div className="flex-1 glass rounded-2xl flex items-center px-4 py-3 min-h-[48px]">
             <input
               ref={inputRef}
@@ -325,7 +339,16 @@ export default function ChatInterface() {
                 disabled={isLoading}
                 className="ml-2 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center active:opacity-80 transition-opacity flex-shrink-0"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <line x1="22" y1="2" x2="11" y2="13" />
                   <polygon points="22 2 15 22 11 13 2 9 22 2" />
                 </svg>
@@ -355,6 +378,7 @@ export default function ChatInterface() {
             localStorage.setItem('parakeet_system_prompt', p);
             localStorage.setItem('parakeet_auto_speak', s.toString());
             setShowSettings(false);
+            if (error && k) setError('');
           }}
         />
       )}

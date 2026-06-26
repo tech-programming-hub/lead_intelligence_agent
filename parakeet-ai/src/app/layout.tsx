@@ -4,18 +4,19 @@ import './globals.css';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 
 const inter = Inter({ subsets: ['latin'] });
+const BASE = process.env.NODE_ENV === 'production' ? '/lead_intelligence_agent' : '';
 
 export const metadata: Metadata = {
   title: 'Parakeet AI',
   description: 'Your personal AI voice assistant powered by Claude',
-  manifest: '/manifest.json',
+  manifest: `${BASE}/manifest.json`,
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'Parakeet',
   },
   icons: {
-    apple: '/icons/apple-touch-icon.png',
+    apple: `${BASE}/icons/apple-touch-icon.png`,
   },
   other: {
     'mobile-web-app-capable': 'yes',
@@ -42,7 +43,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-touch-fullscreen" content="yes" />
-        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <link rel="apple-touch-icon" href={`${BASE}/icons/apple-touch-icon.png`} />
       </head>
       <body className={`${inter.className} h-full overflow-hidden`}>
         <ServiceWorkerRegistration />
