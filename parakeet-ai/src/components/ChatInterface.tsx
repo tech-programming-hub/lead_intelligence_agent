@@ -90,21 +90,23 @@ async function callGemini(
   onChunk: (text: string) => void
 ): Promise<string> {
   const contents = [
-    ...messages.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    })),
+    ...messages
+      .filter((m) => m.content && !m.content.startsWith('⚠️'))
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })),
     { role: 'user', parts: [{ text: currentMessage }] },
   ];
 
   const body = {
-    systemInstruction: { parts: [{ text: systemPrompt }] },
+    system_instruction: { parts: [{ text: systemPrompt }] },
     contents,
     generationConfig: { maxOutputTokens: 2048, temperature: 0.9 },
   };
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey.trim()}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey.trim()}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
