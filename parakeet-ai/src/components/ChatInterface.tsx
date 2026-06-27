@@ -3,6 +3,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import SettingsModal from './SettingsModal';
 
+// ── Speaker detection patterns (client-side, no API call needed) ──
+const ANUP_INTRO_PATTERNS = /\b(i am anup|myself anup|my name is anup|anup verma|this is anup|i'm anup)\b/i;
+const ANUP_SPEAKING_PATTERNS = /^(i |i've |i was |i have |i did |i built |i led |i'm |i am |we |we've |so i |so we |yeah[, ]|sure[, ]|so at |at (wipro|mgm|capgemini|bmw|tcs|maersk|hcl|air canada)|in my |during my |when i |my (experience|background|work|role))/i;
+const INTERVIEWER_QUESTION_PATTERNS = /(\?|tell me|describe a|explain |what is |what are |how do |how would |can you |walk me |talk me |give me |have you ever|what's your|why did|where do)/i;
+
 // ── Tech term corrections for voice mishearings ──
 const TECH_CORRECTIONS: [RegExp, string][] = [
   [/\bnaka\b/gi, 'Kafka'], [/\bnauka\b/gi, 'Kafka'],
@@ -26,55 +31,76 @@ function correctTranscript(text: string): string {
 
 // ── System prompts ──
 
-const COACH_SYSTEM = `You are Parakeet — Anup Verma's personal AI interview coach. Give brutally honest, hyper-specific coaching.
+const COACH_SYSTEM = `You are Parakeet — Anup Verma's world-class interview coach. You think like a hiring manager at Google, Meta, and Amazon. You know exactly what separates a good answer from a great one at top companies.
 
-ANUP'S PROFILE:
-- Technical Lead, 11+ years | Wipro → MGM Resorts (Sep 2023–present): MCP servers on 200+ microservices (−40% boilerplate, −25% MTTR)
-- Capgemini → BMW (2021–2023): Led PQM app, Java 17, Kafka, Elasticsearch
-- TCS → Maersk (2019–2021): Legacy modernization, GSIS system
-- HCL → Air Canada (2015–2019): PNR servicing, high-load aviation systems
-- Open Source: AgentPulse (PyPI) — LLM proxy/schema drift; MCP Chatbot RAG System
-- Skills: Java 21, Python, Spring Boot, FastAPI, Kafka, Elasticsearch, PostgreSQL, MCP, RAG, Docker, Grafana
-- Target: Staff/Principal/AI Engineer. ₹40–60 LPA India or $180k–$220k+ global
+ANUP'S REAL AMMUNITION:
+- Technical Lead, 11+ years | Wipro → MGM Resorts: MCP integration on 200+ microservices (−40% boilerplate, −25% MTTR)
+- Capgemini → BMW: Led PQM quality app, Java 17, Kafka, Elasticsearch, team of 6
+- TCS → Maersk: Modernized legacy GSIS shipping system
+- HCL → Air Canada: PNR servicing, high-load aviation, customer self-service
+- Open Source: AgentPulse (PyPI) — LLM proxy solving schema drift in AI agents; MCP Chatbot RAG System
+- Skills: Java 21, Spring Boot, Kafka, Elasticsearch, Python, FastAPI, MCP, RAG, Docker, Grafana
+- Target: Staff/Principal/AI Engineer. ₹40-60 LPA India or $180k-$220k globally
 
-SPEECH-TO-TEXT: May have mishearings — "Naka"=Kafka, "Cuber nettis"=Kubernetes. Always infer correct tech term.
+SPEECH-TO-TEXT: "Naka"=Kafka, "Cuber nettis"=Kubernetes. Always infer correct tech term.
 
-RULES:
-- SHORT answers for mobile: bullet points, max 150 words
-- Reference Anup's REAL projects and numbers always
-- After answering, suggest ONE next drill
-- For mock interview: ask ONE question, wait, give bullet feedback + model answer
-- His MCP/AgentPulse work is a MASSIVE differentiator — always remind him to lead with it
+YOUR COACHING PHILOSOPHY:
+1. WORLD-CLASS FIRST: Give the ideal answer a Staff Engineer at Google/Meta would give — draw on industry best practices, not just what is on Anup's resume. If he asks about Kafka, give the best Kafka answer that exists, then connect it to his BMW experience.
+2. FILL GAPS HONESTLY: If a topic exposes a gap in his experience, say so and give him the smart interview strategy: "You haven't done X directly, but here's how to bridge it using what you have done..."
+3. CONNECT REAL EXPERIENCE: Show exactly how his projects map to the ideal answer. His MCP/AgentPulse work is rare — most candidates have zero open-source AI infra. Make him lead with it.
+4. BREVITY FOR MOBILE: Under 200 words total. Format: ideal answer script → how Anup connects to it → one sharp tip.
+5. NUMBERS ALWAYS: "40% boilerplate reduction", "200+ microservices", "11 years" beat vague claims every time.
+6. For mock interviews: ask ONE realistic question at a time. After his answer, grade it on a FAANG rubric — communication, depth, metrics, structure.
 
-Start: "What are we drilling? (1) Mock Interview (2) STAR Stories (3) System Design (4) Salary Negotiation (5) Other"`;
+Start every fresh session: "What are we drilling? (1) Mock Interview (2) STAR Stories (3) System Design (4) Salary Negotiation (5) Other topic"`;
 
-const INTERVIEW_SYSTEM = `You are Parakeet — a LIVE interview copilot for Anup Verma. The interviewer is speaking. Generate INSTANT talking points for Anup to use RIGHT NOW.
+const INTERVIEW_SYSTEM = `You are Parakeet — a LIVE interview copilot for Anup Verma.
 
 ANUP'S BACKGROUND:
-- Technical Lead, 11+ years | Current: Wipro → MGM Resorts: MCP integration across 200+ microservices (−40% boilerplate, −25% MTTR), Grafana automation
-- Capgemini → BMW: Led PQM app, Java 17, Kafka, Elasticsearch, cross-functional team
-- TCS → Maersk: Legacy GSIS modernization, shipping system accuracy
-- HCL → Air Canada: PNR servicing, high-load aviation systems
-- Open Source: AgentPulse (PyPI) — LLM proxy, schema drift solution; MCP Chatbot RAG System
-- Skills: Java 21, Python, Spring Boot, FastAPI, Kafka, Elasticsearch, PostgreSQL, MCP, RAG, LLM APIs, Docker, Grafana
-- Target: Staff/Principal/AI Engineer. ₹40–60 LPA India or $180k–$220k global
+- Technical Lead, 11+ years | Wipro → MGM Resorts: MCP integration on 200+ microservices (−40% boilerplate, −25% MTTR)
+- Capgemini → BMW: Led PQM quality app, Java 17, Kafka, Elasticsearch, team of 6
+- TCS → Maersk: Modernized legacy GSIS shipping system
+- HCL → Air Canada: PNR servicing, high-load aviation systems, customer self-service
+- Open Source: AgentPulse (PyPI) — LLM proxy for schema drift; MCP Chatbot RAG System
+- Skills: Java 21, Spring Boot, Kafka, Elasticsearch, PostgreSQL, Python, FastAPI, MCP, RAG, Docker, Grafana
+- Target: Staff/Principal/AI Engineer. ₹40-60 LPA India or $180k-$220k globally
 
-SPEECH-TO-TEXT CORRECTION: "Naka"=Kafka, "Cuber nettis"=Kubernetes, "Post gress"=PostgreSQL etc. Always infer correct tech term.
+SPEECH-TO-TEXT CORRECTION: "Naka"=Kafka, "Cuber nettis"=Kubernetes, "Post gress"=PostgreSQL. Always infer correct tech term.
 
-LIVE COPILOT RULES — CRITICAL:
-1. Output ONLY bullet points — max 4 bullets, max 12 words each
-2. These are SPOKEN talking points Anup will say out loud RIGHT NOW
-3. Start with his strongest relevant experience for this question
-4. Always include a specific number/metric if relevant (40%, 25%, 200+, 11 years)
-5. If it's small talk or not a question, output: "💬 Small talk — just be natural"
-6. If unclear/mishear, output: "🎤 Didn't catch that — keep listening"
-7. NO intros, NO "Here are your talking points", NO explanations — JUST the bullets
+━━━ SPEAKER DETECTION — DO THIS FIRST ━━━
 
-Example output for "Tell me about yourself":
-• 11 years backend engineering → Technical Lead at MGM Resorts via Wipro
-• Led MCP integration: 200+ microservices, 40% less boilerplate
-• Built AgentPulse — open-source LLM proxy on PyPI (schema drift solution)
-• Targeting Staff/AI Engineering roles where I own AI infra at scale`;
+Read the captured text carefully and classify it:
+
+→ INTERVIEWER asking a question: second-person phrasing, "tell me", "how would you", "describe a time", "what is your", "can you walk me through", "what do you know about X", ends with "?" or interrogative structure
+→ CANDIDATE answering: starts with "I ", "We ", "So ", "At [company]", "In my", "Yeah", "Sure", first-person technical narration, filler words, ongoing explanation
+→ UNCLEAR: too short, ambient noise, incomplete sentence, less than 6 meaningful words
+
+━━━ RESPONSE RULES ━━━
+
+IF CANDIDATE_ANSWERING: reply with ONLY this single token (nothing else):
+ANUP_SPEAKING
+
+IF UNCLEAR: reply with ONLY this single token:
+UNCLEAR
+
+IF INTERVIEWER_QUESTION: Generate exactly 3 talking point sentences. Rules:
+- Each is a complete, natural sentence Anup can say out loud verbatim
+- NOT fragments. NOT "11 years → Technical Lead". Full sentences.
+- Sentence 1: strongest matching credential with specific number/metric
+- Sentence 2: most relevant project or technical detail
+- Sentence 3: outcome, impact, or forward-looking angle
+- Put each on its own line starting with •
+- NO headers, NO intro text, NO explanation — JUST the 3 bullet sentences
+
+Example for "Tell me about yourself":
+• I have 11 years of software engineering experience and I'm currently a Technical Lead at MGM Resorts through Wipro, where I lead architecture across 200-plus microservices.
+• My biggest recent work is integrating MCP servers into our microservice ecosystem — that cut boilerplate code by 40% and reduced mean time to resolution by 25%.
+• Outside of work, I built AgentPulse, an open-source LLM proxy published on PyPI that solves schema drift in autonomous AI agent workflows — it's what makes me different from most backend engineers.
+
+Example for "What do you know about Kafka":
+• I've used Kafka extensively at BMW through Capgemini, where I designed the event streaming architecture for a real-time quality management system processing manufacturing defect events.
+• I handled producer-consumer design, schema evolution, and Kafka's integration with Elasticsearch for sub-second analytics on large event volumes — that was a cross-functional team I was leading.
+• Beyond that, in my open-source work with AgentPulse I used async message patterns similar to Kafka's model for handling concurrent LLM API calls without blocking.`;
 
 const COACH_QUICK_PROMPTS = [
   { emoji: '🎯', label: 'Mock Interview', prompt: 'Start a mock Staff Engineer technical interview — ask me the first question' },
@@ -148,11 +174,13 @@ export default function ChatInterface() {
   const [coachAnswer, setCoachAnswer] = useState('');
 
   // Interview mode state
-  const [liveQuestion, setLiveQuestion] = useState('');   // what the interviewer said
-  const [liveAnswer, setLiveAnswer] = useState('');        // talking points for Anup
+  const [liveQuestion, setLiveQuestion] = useState('');
+  const [liveAnswer, setLiveAnswer] = useState('');
+  const [liveState, setLiveState] = useState<'idle' | 'calibrating' | 'listening' | 'anup_speaking' | 'loading' | 'answer'>('idle');
   const [isLiveListening, setIsLiveListening] = useState(false);
-  const [liveInterim, setLiveInterim] = useState('');      // real-time transcript
+  const [liveInterim, setLiveInterim] = useState('');
   const [liveHistory, setLiveHistory] = useState<HistoryItem[]>([]);
+  const [voiceCalibrated, setVoiceCalibrated] = useState(false);
 
   // Shared state
   const [isLoading, setIsLoading] = useState(false);
@@ -176,6 +204,7 @@ export default function ChatInterface() {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveAccumulatedRef = useRef('');
   const isLiveActiveRef = useRef(false);  // tracks if interview mode should keep running
+  const isCalibratingRef = useRef(false); // true during voice ID calibration phase
 
   useEffect(() => {
     const savedKey = localStorage.getItem('parakeet_api_key') || '';
@@ -288,16 +317,37 @@ export default function ChatInterface() {
   const generateLiveAnswer = useCallback(async (question: string) => {
     if (!question.trim() || !apiKey || isLoading) return;
     const corrected = correctTranscript(question.trim());
-    setLiveQuestion(corrected);
+    setLiveState('loading');
+    setLiveQuestion('');
     setLiveAnswer('');
     setIsLoading(true);
 
     try {
+      let streamed = '';
       const full = await callGroq(apiKey, liveHistory, corrected, INTERVIEW_SYSTEM,
-        partial => setLiveAnswer(partial));
-      setLiveHistory(prev => [...prev, { role: 'user', content: corrected }, { role: 'assistant', content: full }]);
+        partial => { streamed = partial; setLiveAnswer(partial); });
+
+      const trimmed = full.trim();
+
+      // Speaker detection tokens from the AI
+      if (trimmed === 'ANUP_SPEAKING') {
+        setLiveState('anup_speaking');
+        setLiveQuestion('');
+        setLiveAnswer('');
+      } else if (trimmed === 'UNCLEAR') {
+        // Too short/unclear — just keep listening, don't show anything
+        setLiveState('listening');
+        setLiveQuestion('');
+        setLiveAnswer('');
+      } else {
+        // Real talking points from interviewer question
+        setLiveQuestion(corrected);
+        setLiveState('answer');
+        setLiveHistory(prev => [...prev, { role: 'user', content: corrected }, { role: 'assistant', content: full }]);
+      }
     } catch (err: any) {
       const raw = err?.message || '';
+      setLiveState('listening');
       setError(raw.includes('401') ? '❌ Invalid Groq key — check Settings'
         : raw.includes('429') ? '⏱ Rate limit — wait a second'
         : `❌ ${raw || 'API error'}`);
@@ -332,18 +382,45 @@ export default function ChatInterface() {
       }
       setLiveInterim(correctTranscript((liveAccumulatedRef.current + interim).trim()));
 
-      // Reset silence timer — if 2.5s of silence after speech, fire question
+      // Reset silence timer — if 2.5s of silence after speech, classify speaker
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = setTimeout(() => {
         const accumulated = liveAccumulatedRef.current.trim();
-        if (accumulated.length > 8) {  // ignore very short fragments
-          liveAccumulatedRef.current = '';
-          setLiveInterim('');
-          generateLiveAnswer(accumulated);
-        } else {
-          liveAccumulatedRef.current = '';
-          setLiveInterim('');
+        liveAccumulatedRef.current = '';
+        setLiveInterim('');
+        if (accumulated.length < 6) return;
+
+        const corrected = correctTranscript(accumulated);
+
+        // 1. Anup's self-introduction → mark voice as calibrated
+        if (ANUP_INTRO_PATTERNS.test(corrected)) {
+          isCalibratingRef.current = false;
+          setVoiceCalibrated(true);
+          setLiveState('anup_speaking');
+          setTimeout(() => setLiveState('listening'), 2500);
+          return;
         }
+
+        // 2. Still in calibration phase — only proceed if it's clearly a question
+        if (isCalibratingRef.current) {
+          if (INTERVIEWER_QUESTION_PATTERNS.test(corrected)) {
+            isCalibratingRef.current = false;
+            setLiveState('listening');
+            generateLiveAnswer(corrected);
+          }
+          // Otherwise keep waiting for Anup's intro
+          return;
+        }
+
+        // 3. After calibration: quick first-person check avoids unnecessary API calls
+        if (ANUP_SPEAKING_PATTERNS.test(corrected)) {
+          setLiveState('anup_speaking');
+          setTimeout(() => setLiveState('listening'), 1500);
+          return;
+        }
+
+        // 4. Send to AI for full classification + talking points
+        generateLiveAnswer(corrected);
       }, 2500);
     };
 
@@ -373,7 +450,10 @@ export default function ChatInterface() {
     setError('');
     liveAccumulatedRef.current = '';
     isLiveActiveRef.current = true;
+    isCalibratingRef.current = true;
     setIsLiveListening(true);
+    setLiveState('calibrating');
+    setVoiceCalibrated(false);
     setLiveQuestion('');
     setLiveAnswer('');
     setLiveInterim('');
@@ -382,7 +462,10 @@ export default function ChatInterface() {
 
   const stopInterviewMode = useCallback(() => {
     isLiveActiveRef.current = false;
+    isCalibratingRef.current = false;
     setIsLiveListening(false);
+    setLiveState('idle');
+    setVoiceCalibrated(false);
     liveAccumulatedRef.current = '';
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     try { liveRecognitionRef.current?.stop(); } catch { /* ok */ }
@@ -409,7 +492,6 @@ export default function ChatInterface() {
   // ─── RENDER ─────────────────────────────────────────────────────────────────
 
   const coachIsIdle = !coachQuestion && !coachAnswer && !isLoading && !pendingTranscript;
-  const liveIsIdle = !liveQuestion && !liveAnswer && !isLoading;
 
   return (
     <div className="flex flex-col bg-[#08080c] text-white select-none" style={{ height: '100dvh' }}>
@@ -420,7 +502,7 @@ export default function ChatInterface() {
 
         <div className="flex items-center justify-between px-5 mb-2">
           <button onClick={clearSession} className="text-white/40 text-sm font-medium active:text-white min-w-[48px]">
-            {(coachQuestion || liveQuestion || isLiveListening) ? 'New' : ''}
+            {(coachQuestion || liveQuestion || liveState !== 'idle') ? 'New' : ''}
           </button>
           <div className="flex flex-col items-center">
             <span className="text-base font-bold tracking-tight">🦜 Parakeet</span>
@@ -454,7 +536,7 @@ export default function ChatInterface() {
           <div ref={answerRef} className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' } as any}>
 
             {/* Idle / setup screen */}
-            {liveIsIdle && !isLiveListening && (
+            {liveState === 'idle' && (
               <div className="flex flex-col items-center justify-center min-h-full px-6 py-8 gap-5">
                 <div className="text-5xl">🎙️</div>
                 <div className="text-center">
@@ -490,30 +572,28 @@ export default function ChatInterface() {
               </div>
             )}
 
-            {/* Active listening / answer display */}
-            {(isLiveListening || liveQuestion || liveAnswer) && (
+            {/* Active session — all non-idle states */}
+            {liveState !== 'idle' && (
               <div className="px-5 pt-5 pb-4">
 
-                {/* Listening indicator */}
-                {isLiveListening && (
-                  <div className="flex items-center gap-3 mb-4 glass rounded-2xl px-4 py-3">
-                    <div className="flex gap-1 items-center">
-                      {[14, 22, 18, 28, 18, 22, 14].map((h, i) => (
-                        <div key={i} className="w-1 rounded-full bg-red-400"
-                          style={{ height: `${h}px`, animation: 'wave 0.9s ease-in-out infinite alternate', animationDelay: `${i * 0.09}s` }} />
-                      ))}
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-red-400 uppercase tracking-widest">Listening to interviewer</p>
-                      <p className="text-xs text-white/40">Talking points appear automatically</p>
-                    </div>
-                    <button onClick={stopInterviewMode} className="ml-auto text-white/30 active:text-white/80">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <path d="M18 6 6 18M6 6l12 12" />
-                      </svg>
-                    </button>
+                {/* Listening indicator — always shown when active */}
+                <div className="flex items-center gap-3 mb-4 glass rounded-2xl px-4 py-3">
+                  <div className="flex gap-1 items-center">
+                    {[14, 22, 18, 28, 18, 22, 14].map((h, i) => (
+                      <div key={i} className="w-1 rounded-full bg-red-400"
+                        style={{ height: `${h}px`, animation: 'wave 0.9s ease-in-out infinite alternate', animationDelay: `${i * 0.09}s` }} />
+                    ))}
                   </div>
-                )}
+                  <div>
+                    <p className="text-xs font-bold text-red-400 uppercase tracking-widest">Listening to interviewer</p>
+                    <p className="text-xs text-white/40">Talking points appear automatically</p>
+                  </div>
+                  <button onClick={stopInterviewMode} className="ml-auto text-white/30 active:text-white/80">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
 
                 {/* Live interim transcript (what mic is hearing) */}
                 {liveInterim && (
@@ -523,18 +603,50 @@ export default function ChatInterface() {
                   </div>
                 )}
 
-                {/* Question that was detected */}
-                {liveQuestion && (
-                  <div className="mb-4">
-                    <p className="text-[11px] text-white/30 uppercase tracking-widest font-semibold mb-1.5">Interviewer asked</p>
-                    <p className="text-white/65 text-[15px] leading-relaxed">{liveQuestion}</p>
+                {/* Voice calibration prompt */}
+                {liveState === 'calibrating' && (
+                  <div className="mb-4 rounded-2xl px-5 py-5 bg-indigo-500/10 border border-indigo-500/25">
+                    <p className="text-indigo-400 font-bold text-base mb-2">🎤 Identify your voice first</p>
+                    <p className="text-white/55 text-sm leading-relaxed mb-4">
+                      Say your name so the app can tell your voice from the interviewer's:
+                    </p>
+                    <div className="space-y-2 mb-4">
+                      {['"I am Anup Verma"', '"My name is Anup Verma"', '"Myself Anup Verma"'].map(phrase => (
+                        <div key={phrase} className="flex items-center gap-2.5">
+                          <span className="text-indigo-400 text-xs">▶</span>
+                          <p className="text-white/80 text-sm font-mono">{phrase}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => { isCalibratingRef.current = false; setLiveState('listening'); }}
+                      className="text-white/35 text-xs underline active:text-white/60">
+                      Skip — start listening without voice ID
+                    </button>
                   </div>
                 )}
 
-                {/* Loading dots */}
-                {isLoading && !liveAnswer && (
+                {/* Anup is speaking — green reassurance banner */}
+                {liveState === 'anup_speaking' && (
+                  <div className="mb-4 rounded-2xl px-4 py-4 bg-green-500/10 border border-green-500/25">
+                    {voiceCalibrated ? (
+                      <>
+                        <p className="text-green-400 font-bold text-base mb-1">✓ Your voice identified!</p>
+                        <p className="text-white/50 text-sm">App now knows it's you. Listening for interviewer next…</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-green-400 font-bold text-base mb-1">🎤 You're speaking</p>
+                        <p className="text-white/50 text-sm">Keep going — I'll catch the next interviewer question</p>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Detecting speaker (loading) */}
+                {liveState === 'loading' && (
                   <div className="mb-4">
-                    <p className="text-[11px] text-red-400 uppercase tracking-widest font-semibold mb-3">Generating talking points</p>
+                    <p className="text-[11px] text-red-400 uppercase tracking-widest font-semibold mb-3">Detecting speaker…</p>
                     <div className="flex gap-1.5 items-center">
                       {[0, 0.2, 0.4].map((d, i) => (
                         <div key={i} className="w-2.5 h-2.5 rounded-full bg-red-400"
@@ -544,18 +656,18 @@ export default function ChatInterface() {
                   </div>
                 )}
 
-                {/* Talking points — BIG, easy to read while speaking */}
-                {liveAnswer && (
+                {/* Talking points — BIG text, easy to read while speaking */}
+                {liveState === 'answer' && (
                   <div>
-                    <p className="text-[11px] text-red-400 uppercase tracking-widest font-semibold mb-3">
-                      Your talking points
-                    </p>
+                    {liveQuestion && (
+                      <div className="mb-4">
+                        <p className="text-[11px] text-white/30 uppercase tracking-widest font-semibold mb-1.5">Interviewer asked</p>
+                        <p className="text-white/65 text-[15px] leading-relaxed">{liveQuestion}</p>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-red-400 uppercase tracking-widest font-semibold mb-3">Your talking points</p>
                     <div className="text-white text-[18px] leading-[1.8] whitespace-pre-wrap font-medium tracking-[0.01em]">
                       {liveAnswer}
-                      {isLoading && (
-                        <span className="inline-block w-0.5 h-5 bg-red-400 ml-0.5 align-middle"
-                          style={{ animation: 'cursor-blink 0.8s step-end infinite' }} />
-                      )}
                     </div>
                   </div>
                 )}
@@ -573,17 +685,22 @@ export default function ChatInterface() {
           </div>
 
           {/* Interview mode bottom — compact stop bar */}
-          {isLiveListening && (
+          {liveState !== 'idle' && (
             <div className="flex-shrink-0 border-t border-white/[0.06] bg-black/70 backdrop-blur-xl px-4 flex items-center gap-3"
               style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)', paddingTop: '10px' }}>
               {/* Waveform */}
               <div className="flex gap-0.5 items-center flex-shrink-0">
                 {[6, 10, 14, 10, 18, 10, 14, 10, 6].map((h, i) => (
-                  <div key={i} className="w-1 rounded-full bg-red-400"
+                  <div key={i} className={`w-1 rounded-full ${liveState === 'calibrating' ? 'bg-indigo-400' : liveState === 'anup_speaking' ? 'bg-green-400' : 'bg-red-400'}`}
                     style={{ height: `${h}px`, animation: 'wave 0.9s ease-in-out infinite alternate', animationDelay: `${i * 0.09}s` }} />
                 ))}
               </div>
-              <p className="flex-1 text-xs text-red-400 font-semibold">Listening to interviewer…</p>
+              <p className={`flex-1 text-xs font-semibold ${liveState === 'calibrating' ? 'text-indigo-400' : liveState === 'anup_speaking' ? 'text-green-400' : 'text-red-400'}`}>
+                {liveState === 'calibrating' ? 'Say your name to identify voice…'
+                  : liveState === 'anup_speaking' ? "You're speaking…"
+                  : liveState === 'loading' ? 'Detecting speaker…'
+                  : 'Listening to interviewer…'}
+              </p>
               <button onClick={stopInterviewMode}
                 className="glass rounded-xl px-4 py-2.5 text-xs font-semibold text-white/60 active:bg-white/10 flex-shrink-0">
                 ■ Stop
